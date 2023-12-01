@@ -6,8 +6,8 @@ import os
 import sys
 from typing import Optional
 
-from tools.functions import generate_device_query_tool
-from tools.prompt import generate_prompt
+from gpt.functions import generate_device_query_tool
+from gpt.prompt import generate_prompt
 
 
 def env_var(name: str, allow_null: bool = False) -> Optional[str]:
