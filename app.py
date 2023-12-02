@@ -1,5 +1,5 @@
 from dotenv import load_dotenv
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 
 from gpt.client import OpenAISession
 from gpt.functions import generate_device_query_tool
@@ -17,9 +17,9 @@ def hello_world():
     return 'Hello World!'
 
 
-@app.get('/prompt')
+@app.post('/message')
 async def user_prompt():
-    return jsonify(openai_session.handle_user_message('Are the kitchen lights on?',
+    return jsonify(openai_session.handle_user_message(request.form['message'],
                                                       tools=[generate_device_query_tool(['Kitchen Lights'])]))
 
 
