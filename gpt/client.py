@@ -11,46 +11,47 @@ from util import env_var
 class OpenAISession:
     """Client wrapper for the OpenAI library"""
 
-    def __init__(self, prompt: str):
+    def __init__(self):
         self._client = OpenAI(api_key=env_var('OPENAI_KEY'))
         self._gpt_model = env_var('GPT_MODEL')
+        self._messages: List[Dict[str, Any]] = []
 
-        # For now, we'll stick with an in-memory list.  At some point we should add some storage
-        self._messages: List[Dict[str, Any]] = [{'role': 'system', 'content': prompt}]
+    def load_prompt(self, prompt: str):
+        self._messages.append({'role': 'system', 'content': prompt})
 
-    def handle_user_message(self, user_message: str, tools: List[ChatCompletionToolParam] = None) -> str:
+    async def handle_user_message(self, user_message: str, tools: List[ChatCompletionToolParam] = None) -> str:
         """Processes a message from the user, returns the response uttered by the LLM"""
         self._messages.append({'role': 'user', 'content': user_message})
 
         all_tools = [] if tools is None else tools
         completion = self._client.chat.completions.create(messages=self._messages, tools=all_tools,
                                                           model=self._gpt_model)
-        return self._handle_response(completion.choices[0], all_tools)
+        return await self._handle_response(completion.choices[0], all_tools)
 
-    def _handle_response(self, choice: Choice, tools: List[ChatCompletionToolParam]) -> str:
+    async def _handle_response(self, choice: Choice, tools: List[ChatCompletionToolParam]) -> str:
         match choice.finish_reason:
             case 'stop':
-                return self._handle_gpt_stop(choice)
+                return await self._handle_gpt_stop(choice)
             case 'tool_calls':
-                return self._handle_tool_calls(choice, tools)
+                return await self._handle_tool_calls(choice, tools)
             case _:
                 raise Exception(f"Don't recognize the '{choice.finish_reason}' finish_reason")
 
-    def _handle_gpt_stop(self, choice: Choice) -> str:
+    async def _handle_gpt_stop(self, choice: Choice) -> str:
         self._messages.append({'role': choice.message.role, 'content': choice.message.content})
         return choice.message.content
 
-    def _handle_tool_calls(self, choice: Choice, tools: List[ChatCompletionToolParam]) -> str:
+    async def _handle_tool_calls(self, choice: Choice, tools: List[ChatCompletionToolParam]) -> str:
         self._messages.append({'role': choice.message.role, 'tool_calls': [
             {'id': tc.id, 'type': tc.type, 'function': {'name': tc.function.name, 'arguments': tc.function.arguments}}
             for tc in choice.message.tool_calls]})
         for tool_call in choice.message.tool_calls:
-            self._handle_tool_call(tool_call)
+            await self._handle_tool_call(tool_call)
 
         completion = self._client.chat.completions.create(messages=self._messages, tools=tools, model=self._gpt_model)
-        return self._handle_response(completion.choices[0], tools)
+        return await self._handle_response(completion.choices[0], tools)
 
-    def _handle_tool_call(self, tool_call: ChatCompletionMessageToolCall):
+    async def _handle_tool_call(self, tool_call: ChatCompletionMessageToolCall):
         function_args = json.loads(tool_call.function.arguments)
 
         # TODO: actually use the tool

@@ -1,6 +1,10 @@
 import os
 import sys
-from typing import Optional
+from typing import Dict, List, Optional, Union
+
+JSON = Union[int, float, str, None, 'JSONObject', List['JSON']]
+JSONObject = Dict[str, JSON]
+JSONList = List[JSON]
 
 
 def env_var(name: str, allow_null: bool = False) -> Optional[str]:
