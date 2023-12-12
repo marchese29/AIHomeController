@@ -2,7 +2,7 @@ import os
 import sys
 from typing import Dict, List, Optional, Union
 
-JSON = Union[int, float, str, None, 'JSONObject', List['JSON']]
+JSON = Union[int, float, str, bool, None, Dict[str, 'JSON'], List['JSON']]
 JSONObject = Dict[str, JSON]
 JSONList = List[JSON]
 

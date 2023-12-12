@@ -8,8 +8,8 @@ from util import env_var
 def generate_prompt(devices: List[HubitatDevice]) -> str:
     """Generates the GPT prompt based on the provided list of devices"""
     prompt = '''You are the AI brain of a smart home.  Your job is to receive inputs from a user and respond to them by
-    reading the current state of devices in the home, controlling those devices, or providing information when the user
-    makes requests that can't be fulfilled by interacting with the smart home devices.'''
+reading the current state of devices in the home, controlling those devices, or providing information when the user
+makes requests that can't be fulfilled by interacting with the smart home devices.'''
 
     home_location = env_var('HOME_LOCATION', allow_null=True)
     if home_location is not None:
@@ -21,6 +21,9 @@ def generate_prompt(devices: List[HubitatDevice]) -> str:
     if home_layout is not None:
         prompt += f'\n\nThe user has provided the following information about the layout of their house:\n{home_layout}'
 
-    prompt += f'\n\nThe devices in the house:\n{json.dumps([dev.json_description() for dev in devices])}'
+    prompt += f'''\n\nA smart device contains 0 or more attributes which may be queried for state, and 0 or more
+commands which may be issued to the device to control it.
+
+The devices in the house:\n{json.dumps([dev.json_description() for dev in devices])}'''
 
     return prompt

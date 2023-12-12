@@ -18,6 +18,7 @@ class CommandArgument(BaseModel):
     name: str
     value_type: str
     restrictions: Dict[str, Any] = {}
+    required: bool = False
 
 
 class DeviceCommand(BaseModel):
@@ -28,11 +29,11 @@ class DeviceCommand(BaseModel):
         return hash(self.name)
 
 
-allowed_capabilities: List[str] = ['Switch', 'SwitchLevel', 'MotionSensor', 'ContactSensor', 'TemperatureMeasurement',
+allowed_capabilities: List[str] = ['Switch', 'MotionSensor', 'ContactSensor', 'TemperatureMeasurement',
                                    'GarageDoorControl']
 capability_attributes: Dict[str, List[DeviceAttribute]] = {
     'Switch': [DeviceAttribute(name='switch', value_type='string', restrictions={'enum': ['on', 'off']})],
-    'SwitchLevel': [DeviceAttribute(name='level', value_type='integer', restrictions={'minimum': 0, 'maximum': 100})],
+    # 'SwitchLevel': [DeviceAttribute(name='level', value_type='integer', restrictions={'minimum': 0, 'maximum': 100})],
     'MotionSensor': [
         DeviceAttribute(name='motion', value_type='string', restrictions={'enum': ['active', 'inactive']})],
     'ContactSensor': [DeviceAttribute(name='contact', value_type='string', restrictions={'enum': ['closed', 'open']})],
@@ -42,8 +43,9 @@ capability_attributes: Dict[str, List[DeviceAttribute]] = {
 }
 capability_commands: Dict[str, List[DeviceCommand]] = {
     'Switch': [DeviceCommand(name=c) for c in ['on', 'off']],
-    'SwitchLevel': [DeviceCommand(name='setLevel', arguments=[
-        CommandArgument(name='level', value_type='integer', restrictions={'minimum': 0, 'maximum': 100})])],
+    # 'SwitchLevel': [DeviceCommand(name='setLevel', arguments=[
+    #     CommandArgument(name='level', value_type='integer', restrictions={'minimum': 0, 'maximum': 100},
+    #                     required=True)])],
     'MotionSensor': [],
     'ContactSensor': [],
     'TemperatureMeasurement': [],
@@ -64,7 +66,6 @@ class HubitatDevice(BaseModel):
             'id': int(self.id),
             'name': self.label,
             'room': self.room,
-            'capabilities': self.capabilities,
             'attributes': [a.name for a in self.attributes],
             'commands': [c.name for c in self.commands]
         }
