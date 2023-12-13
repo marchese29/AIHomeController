@@ -2,7 +2,7 @@ from dotenv import load_dotenv
 from flask import Flask, jsonify, request
 
 from gpt.client import OpenAISession
-from gpt.functions import DeviceCommandTool, DeviceQueryTool
+from gpt.functions import DeviceCommandFunction, DeviceQueryFunction
 from gpt.prompt import generate_prompt
 from hubitat.client import HubitatClient
 
@@ -11,7 +11,7 @@ load_dotenv()
 app = Flask(__name__)
 
 he_client = HubitatClient()
-openai_session = OpenAISession(tools=[DeviceCommandTool(he_client), DeviceQueryTool(he_client)])
+openai_session = OpenAISession(functions=[DeviceCommandFunction(he_client), DeviceQueryFunction(he_client)])
 
 he_client.load_devices()
 openai_session.load_prompt(generate_prompt(he_client.devices))
