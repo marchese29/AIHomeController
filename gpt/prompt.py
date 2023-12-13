@@ -22,7 +22,9 @@ makes requests that can't be fulfilled by interacting with the smart home device
         prompt += f'\n\nThe user has provided the following information about the layout of their house:\n{home_layout}'
 
     prompt += f'''\n\nA smart device contains 0 or more attributes which may be queried for state, and 0 or more
-commands which may be issued to the device to control it.
+commands which may be issued to the device to control it.  Duplicate commands are ignored by the home controller so, for
+example, if you are asked to turn off a switch there is no need to check the switch's state before sending the 'off'
+command.
 
 The devices in the house:\n{json.dumps([dev.json_description() for dev in devices])}'''
 

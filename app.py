@@ -2,16 +2,16 @@ from dotenv import load_dotenv
 from flask import Flask, jsonify, request
 
 from gpt.client import OpenAISession
-from gpt.functions import generate_command_tool, generate_device_query_tool
+from gpt.functions import DeviceCommandTool, DeviceQueryTool
 from gpt.prompt import generate_prompt
-from hubitat.client import HubitatClient, capability_commands
+from hubitat.client import HubitatClient
 
 load_dotenv()
 
 app = Flask(__name__)
 
-openai_session = OpenAISession()
 he_client = HubitatClient()
+openai_session = OpenAISession(tools=[DeviceCommandTool(he_client), DeviceQueryTool(he_client)])
 
 he_client.load_devices()
 openai_session.load_prompt(generate_prompt(he_client.devices))
@@ -24,8 +24,7 @@ def hello_world():
 
 @app.post('/message')
 async def user_prompt():
-    tools = [generate_device_query_tool(he_client.devices), generate_command_tool(capability_commands)]
-    response = await openai_session.handle_user_message(request.form['message'], tools=tools)
+    response = await openai_session.handle_user_message(request.form['message'])
     return jsonify(response)
 
 

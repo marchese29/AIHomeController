@@ -94,3 +94,30 @@ class HubitatClient:
                     commands.add(command)
             self.devices.append(HubitatDevice(id=dev['id'], label=dev['label'], room=dev['room'], capabilities=caps,
                                               attributes=attributes, commands=commands))
+
+    async def send_command(self, device_id: int, command: str, *args: Any):
+        """Sends the provided command with any arguments to the device with the specified device id."""
+        url = f"{self._address}/devices/{device_id}/{command}"
+        if len(args) > 0:
+            url += f"/{','.join(args)}"
+
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(url, params={'access_token': self._token})
+        if resp.status_code != 200:
+            raise Exception(f"HE Client returned '{resp.status_code}' status: {resp.text}")
+
+    async def get_attribute(self, device_id: int, attribute: str) -> Any:
+        """Gets the current value of the given attribute for the device with the specified device id."""
+        url = f"{self._address}/devices/{device_id}"
+
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(url, params={'access_token': self._token})
+        if resp.status_code != 200:
+            raise Exception(f"HE Client returned '{resp.status_code}' status: {resp.text}")
+
+        attributes: List[Dict[str, Any]] = resp.json()['attributes']
+        for attr in attributes:
+            if attr['name'] == attribute:
+                return attr['currentValue']
+
+        return None
