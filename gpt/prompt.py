@@ -2,6 +2,7 @@ import json
 from typing import List
 
 from hubitat import HubitatDevice
+from hubitat.client import allowed_capabilities, capability_commands, capability_attributes
 from util import env_var
 
 
@@ -21,11 +22,22 @@ makes requests that can't be fulfilled by interacting with the smart home device
     if home_layout is not None:
         prompt += f'\n\nThe user has provided the following information about the layout of their house:\n{home_layout}'
 
-    prompt += f'''\n\nA smart device contains 0 or more attributes which may be queried for state, and 0 or more
-commands which may be issued to the device to control it.  Duplicate commands are ignored by the home controller so, for
-example, if you are asked to turn off a switch there is no need to check the switch's state before sending the 'off'
-command.
+    capabilities = {cap: {'commands': [co.model_dump(exclude_none=True) for co in capability_commands[cap]],
+                          'attributes': [att.model_dump(exclude={'restrictions'}, exclude_none=True) for att in
+                                         capability_attributes[cap]]}
+                    for cap in allowed_capabilities}
+    prompt += f'''\n\nA smart device has 1 or more capabilities.  A capability indicates the presence of 1 or more
+attributes for a device which can be queried.  A capability also indicates the presence of 0 or more commands which can
+be issued to control the device.  A command will take 0 or more arguments.
 
-The devices in the house:\n{json.dumps([dev.json_description() for dev in devices])}'''
+A device can have one or more of the following capabilities: {', '.join(allowed_capabilities)}.  The attributes and
+commands for each capability are as follows: {json.dumps(capabilities)}'''
+
+    prompt += f'''\n\nThe devices in the house:\n{[d.json_description() for d in devices]}'''
+
+    prompt += '''\n\nThe home controller will ignore duplicate commands so you do not need to check the state before
+issuing a command.  For example, if a light switch is off and you issue an "off" command, the light will remain off and
+still indicate to you that the command was successful.  Along those same lines, there is no need to check state to see
+that a command has succeeded.'''
 
     return prompt

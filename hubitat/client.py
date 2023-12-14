@@ -1,6 +1,6 @@
 import httpx
 from pydantic import BaseModel
-from typing import Any, Dict, List, Set
+from typing import Any, Dict, List, Optional, Set
 
 from util import env_var, JSONObject
 
@@ -23,32 +23,35 @@ class CommandArgument(BaseModel):
 
 class DeviceCommand(BaseModel):
     name: str
-    arguments: List[CommandArgument] = []
+    arguments: Optional[List[CommandArgument]] = None
 
     def __hash__(self):
         return hash(self.name)
 
 
-allowed_capabilities: List[str] = ['Switch', 'MotionSensor', 'ContactSensor', 'TemperatureMeasurement',
-                                   'GarageDoorControl']
+allowed_capabilities: List[str] = ['Switch', 'SwitchLevel', 'MotionSensor', 'ContactSensor', 'TemperatureMeasurement',
+                                   'RelativeHumidityMeasurement', 'GarageDoorControl']
 capability_attributes: Dict[str, List[DeviceAttribute]] = {
     'Switch': [DeviceAttribute(name='switch', value_type='string', restrictions={'enum': ['on', 'off']})],
-    # 'SwitchLevel': [DeviceAttribute(name='level', value_type='integer', restrictions={'minimum': 0, 'maximum': 100})],
+    'SwitchLevel': [DeviceAttribute(name='level', value_type='integer', restrictions={'minimum': 0, 'maximum': 100})],
     'MotionSensor': [
         DeviceAttribute(name='motion', value_type='string', restrictions={'enum': ['active', 'inactive']})],
     'ContactSensor': [DeviceAttribute(name='contact', value_type='string', restrictions={'enum': ['closed', 'open']})],
     'TemperatureMeasurement': [DeviceAttribute(name='temperature', value_type='number')],
+    'RelativeHumidityMeasurement': [
+        DeviceAttribute(name='humidity', value_type='number', restrictions={'minimum': 0, 'maximum': 100})],
     'GarageDoorControl': [DeviceAttribute(name='door', value_type='string',
                                           restrictions={'enum': ['unknown', 'closing', 'closed', 'opening', 'open']})]
 }
 capability_commands: Dict[str, List[DeviceCommand]] = {
     'Switch': [DeviceCommand(name=c) for c in ['on', 'off']],
-    # 'SwitchLevel': [DeviceCommand(name='setLevel', arguments=[
-    #     CommandArgument(name='level', value_type='integer', restrictions={'minimum': 0, 'maximum': 100},
-    #                     required=True)])],
+    'SwitchLevel': [DeviceCommand(name='setLevel', arguments=[
+        CommandArgument(name='level', value_type='integer', restrictions={'minimum': 0, 'maximum': 100},
+                        required=True)])],
     'MotionSensor': [],
     'ContactSensor': [],
     'TemperatureMeasurement': [],
+    'RelativeHumidityMeasurement': [],
     'GarageDoorControl': [DeviceCommand(name=c) for c in ['open', 'close']]
 }
 
@@ -99,7 +102,7 @@ class HubitatClient:
         """Sends the provided command with any arguments to the device with the specified device id."""
         url = f"{self._address}/devices/{device_id}/{command}"
         if len(args) > 0:
-            url += f"/{','.join(args)}"
+            url += f"/{','.join([str(a) for a in args])}"
 
         async with httpx.AsyncClient() as client:
             resp = await client.get(url, params={'access_token': self._token})

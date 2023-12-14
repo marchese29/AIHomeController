@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import List
+from typing import List, Optional
 
 from .client import HubitatClient
 from gpt.functions import OpenAIFunction
@@ -8,6 +8,7 @@ from gpt.functions import OpenAIFunction
 class DeviceCommandItem(BaseModel):
     device_id: int = Field(description='The ID of the device to issue the command to')
     command: str = Field(description='The command to issue to the device')
+    arguments: Optional[List[str | int | float | bool]] = Field(description='The arguments to pass to the command')
 
 
 class DeviceCommandList(BaseModel):
@@ -34,7 +35,7 @@ class DeviceCommandFunction(OpenAIFunction[DeviceCommandList]):
 
     async def execute(self, commands: DeviceCommandList) -> str:
         for command in commands.commands:
-            await self._he_client.send_command(command.device_id, command.command)
+            await self._he_client.send_command(command.device_id, command.command, *command.arguments)
 
         # TODO: Partial failures?
         return 'Success'
