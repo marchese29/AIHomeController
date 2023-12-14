@@ -2,9 +2,10 @@ from dotenv import load_dotenv
 from flask import Flask, jsonify, request
 
 from gpt.client import OpenAISession
-from gpt.functions import DeviceCommandFunction, DeviceQueryFunction
 from gpt.prompt import generate_prompt
 from hubitat.client import HubitatClient
+from hubitat.command import DeviceCommandFunction
+from hubitat.query import DeviceQueryFunction
 
 load_dotenv()
 
