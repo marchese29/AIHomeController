@@ -1,4 +1,4 @@
-import json
+import asyncio as aio
 from openai import OpenAI
 from openai.types.chat.chat_completion import ChatCompletion, Choice
 from openai.types.chat.chat_completion_message_tool_call import ChatCompletionMessageToolCall
@@ -57,8 +57,11 @@ class OpenAISession:
         self._messages.append({'role': choice.message.role, 'tool_calls': [
             {'id': tc.id, 'type': tc.type, 'function': {'name': tc.function.name, 'arguments': tc.function.arguments}}
             for tc in choice.message.tool_calls]})
+
+        tasks = []
         for tool_call in choice.message.tool_calls:
-            await self._handle_tool_call(tool_call)
+            tasks.append(aio.create_task(self._handle_tool_call(tool_call)))
+        await aio.gather(*tasks)
 
         completion = self._run_completion()
         return await self._handle_response(completion.choices[0])
