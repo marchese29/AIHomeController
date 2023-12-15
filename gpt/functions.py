@@ -11,6 +11,7 @@ class OpenAIFunction(Generic[M], ABC):
     """Represents a callable OpenAI function."""
 
     def _get_model_type(self) -> Type[BaseModel]:
+        """The secret sauce here - allows us to know the concrete model type of this function"""
         for base in type(self).__orig_bases__:
             origin = get_origin(base)
             if origin is None or not issubclass(origin, OpenAIFunction):
@@ -19,7 +20,10 @@ class OpenAIFunction(Generic[M], ABC):
         raise Exception("Man, I dunno")
 
     def get_definition(self) -> JSONObject:
-        """Returns the tool definition for this function."""
+        """
+        Returns the tool definition for this function.  This is the other bit of secret sauce - we're able to use
+        the model type for introspecting the desired tool schema.
+        """
         return {
             'type': 'function',
             'function': {

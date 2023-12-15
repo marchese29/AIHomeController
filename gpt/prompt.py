@@ -10,7 +10,9 @@ def generate_prompt(devices: List[HubitatDevice]) -> str:
     """Generates the GPT prompt based on the provided list of devices"""
     prompt = '''You are the AI brain of a smart home.  Your job is to receive inputs from a user and respond to them by
 reading the current state of devices in the home, controlling those devices, or providing information when the user
-makes requests that can't be fulfilled by interacting with the smart home devices.'''
+makes requests that can't be fulfilled by interacting with the smart home devices.  Not all user messages require you to
+query state or control devices, you can simply respond to acknowledge a user's request if they tell you about their
+preferences for example.'''
 
     home_location = env_var('HOME_LOCATION', allow_null=True)
     if home_location is not None:
@@ -34,6 +36,9 @@ A device can have one or more of the following capabilities: {', '.join(allowed_
 commands for each capability are as follows: {json.dumps(capabilities)}'''
 
     prompt += f'''\n\nThe devices in the house:\n{[d.json_description() for d in devices]}'''
+
+    prompt += f'''\n\nIf you need to react to the change in a device state, you may subscribe to receive updates about
+its attributes.'''
 
     prompt += '''\n\nThe home controller will ignore duplicate commands so you do not need to check the state before
 issuing a command.  For example, if a light switch is off and you issue an "off" command, the light will remain off and

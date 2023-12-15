@@ -1,3 +1,5 @@
+import json
+
 from dotenv import load_dotenv
 from flask import Flask, jsonify, request
 
@@ -6,21 +8,22 @@ from gpt.prompt import generate_prompt
 from hubitat.client import HubitatClient
 from hubitat.command import DeviceCommandFunction
 from hubitat.query import DeviceQueryFunction
+from hubitat.subscribe import SubscribeFunction, UnsubscribeFunction
 
 load_dotenv()
 
 app = Flask(__name__)
 
 he_client = HubitatClient()
-openai_session = OpenAISession(functions=[DeviceCommandFunction(he_client), DeviceQueryFunction(he_client)])
+openai_session = OpenAISession()
 
 he_client.load_devices()
 openai_session.load_prompt(generate_prompt(he_client.devices))
-
-
-@app.route('/')
-def hello_world():
-    return 'Hello World!'
+openai_session.load_functions(
+    [DeviceCommandFunction(he_client),
+     DeviceQueryFunction(he_client),
+     SubscribeFunction(he_client, openai_session),
+     UnsubscribeFunction(he_client)])
 
 
 @app.post('/message')
@@ -29,5 +32,11 @@ async def user_prompt():
     return jsonify(response)
 
 
+@app.post('/he_event')
+async def hubitat_device_event():
+    await he_client.handle_device_event(request.json['content'])
+    return 'Success'
+
+
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=True, host='0.0.0.0', port=8080)

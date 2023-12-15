@@ -35,7 +35,7 @@ class DeviceCommandFunction(OpenAIFunction[DeviceCommandList]):
 
     async def execute(self, commands: DeviceCommandList) -> str:
         for command in commands.commands:
-            await self._he_client.send_command(command.device_id, command.command, *command.arguments)
+            await self._he_client.send_command(command.device_id, command.command, arguments=command.arguments)
 
         # TODO: Partial failures?
         return 'Success'

@@ -1,6 +1,6 @@
 import httpx
-from pydantic import BaseModel
-from typing import Any, Dict, List, Optional, Set
+from pydantic import BaseModel, Field
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Set
 
 from util import env_var, JSONObject
 
@@ -74,6 +74,15 @@ class HubitatDevice(BaseModel):
         }
 
 
+class DeviceEvent(BaseModel):
+    device_id: str = Field(alias='deviceId')
+    attribute: str = Field(alias='name')
+    value: Optional[int | str | float | bool]
+
+
+EventCallback = Callable[[DeviceEvent], Awaitable[None]]
+
+
 class HubitatClient:
     """Wrapper around Hubitat functionalities"""
 
@@ -81,6 +90,8 @@ class HubitatClient:
         self._address = f"http://{env_var('HE_ADDRESS')}/apps/api/{env_var('HE_APP_ID')}"
         self._token = env_var('HE_ACCESS_TOKEN')
         self.devices: List[HubitatDevice] = []
+
+        self._subscriptions: Dict[int, Callable[[DeviceEvent], Awaitable[bool]]] = {}
 
     def load_devices(self):
         """Synchronous function which loads all the currently-known devices"""
@@ -98,11 +109,11 @@ class HubitatClient:
             self.devices.append(HubitatDevice(id=dev['id'], label=dev['label'], room=dev['room'], capabilities=caps,
                                               attributes=attributes, commands=commands))
 
-    async def send_command(self, device_id: int, command: str, *args: Any):
+    async def send_command(self, device_id: int, command: str, arguments: Optional[List[Any]] = None):
         """Sends the provided command with any arguments to the device with the specified device id."""
         url = f"{self._address}/devices/{device_id}/{command}"
-        if len(args) > 0:
-            url += f"/{','.join([str(a) for a in args])}"
+        if arguments is not None and len(arguments) > 0:
+            url += f"/{','.join([str(a) for a in arguments])}"
 
         async with httpx.AsyncClient() as client:
             resp = await client.get(url, params={'access_token': self._token})
@@ -124,3 +135,27 @@ class HubitatClient:
                 return attr['currentValue']
 
         return None
+
+    async def handle_device_event(self, event: Dict[str, Any]) -> bool:
+        """Triggers any callbacks for subscribers registered on this event"""
+        device_event = DeviceEvent.model_validate(event)
+        print(f'Device Event: {device_event.model_dump_json()}')
+
+        device_id = int(device_event.device_id)
+        if device_id in self._subscriptions:
+            callback = self._subscriptions[device_id]
+            return await callback(device_event)
+        return False
+
+    def subscribe(self, device_id: int, attributes: List[str], callback: EventCallback):
+        """Registers the provided callback to be invoked for events on the given device attributes"""
+        async def subscription(event: DeviceEvent) -> bool:
+            if event.attribute in attributes:
+                await callback(event)
+                return True
+            return False
+        self._subscriptions[device_id] = subscription
+
+    def unsubscribe(self, device_id: int):
+        """Un-registers any callbacks for the given device"""
+        del self._subscriptions[device_id]
