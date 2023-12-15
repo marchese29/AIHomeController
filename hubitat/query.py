@@ -1,3 +1,4 @@
+import asyncio as aio
 import json
 from pydantic import BaseModel, Field
 from typing import Any, Dict, List
@@ -34,8 +35,8 @@ class DeviceQueryFunction(OpenAIFunction[DeviceQueryList]):
         return 'Use this function to get the current value of a device attribute'
 
     async def execute(self, queries: DeviceQueryList) -> str:
-        values: Dict[int, Any] = {}
+        tasks = []
         for query in queries.queries:
-            result = await self._he_client.get_attribute(query.device_id, query.attribute)
-            values[query.device_id] = result
-        return json.dumps(values)
+            tasks.append(aio.create_task(self._he_client.get_attribute(query.device_id, query.attribute)))
+        results = await aio.gather(*tasks)
+        return json.dumps(dict(zip([q.device_id for q in queries.queries], results)))

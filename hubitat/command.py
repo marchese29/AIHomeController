@@ -1,3 +1,4 @@
+import asyncio as aio
 from pydantic import BaseModel, Field
 from typing import List, Optional
 
@@ -34,8 +35,9 @@ class DeviceCommandFunction(OpenAIFunction[DeviceCommandList]):
         return 'Use this function to control a device in the smart home by issuing it a command'
 
     async def execute(self, commands: DeviceCommandList) -> str:
-        for command in commands.commands:
-            await self._he_client.send_command(command.device_id, command.command, arguments=command.arguments)
+        await aio.gather(
+            *[self._he_client.send_command(command.device_id, command.command, arguments=command.arguments) for command
+              in commands.commands])
 
         # TODO: Partial failures?
         return 'Success'
