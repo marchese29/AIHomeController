@@ -1,5 +1,3 @@
-import json
-
 from dotenv import load_dotenv
 from flask import Flask, jsonify, request
 
@@ -9,6 +7,7 @@ from hubitat.client import HubitatClient
 from hubitat.command import DeviceCommandFunction
 from hubitat.query import DeviceQueryFunction
 from hubitat.subscribe import SubscribeFunction, UnsubscribeFunction
+from utilities.time import TimerFunction
 
 load_dotenv()
 
@@ -23,7 +22,8 @@ openai_session.load_functions(
     [DeviceCommandFunction(he_client),
      DeviceQueryFunction(he_client),
      SubscribeFunction(he_client, openai_session),
-     UnsubscribeFunction(he_client)])
+     UnsubscribeFunction(he_client),
+     TimerFunction(openai_session)])
 
 
 @app.post('/message')

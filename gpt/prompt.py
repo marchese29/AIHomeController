@@ -38,7 +38,8 @@ commands for each capability are as follows: {json.dumps(capabilities)}'''
     prompt += f'''\n\nThe devices in the house:\n{[d.json_description() for d in devices]}'''
 
     prompt += f'''\n\nIf you need to react to the change in a device state, you may subscribe to receive updates about
-its attributes.'''
+its attributes.  If you need to delay taking an action until later, you can set a timer with the home controller and it
+will notify you when the timer fires.'''
 
     prompt += '''\n\nThe home controller will ignore duplicate commands so you do not need to check the state before
 issuing a command.  For example, if a light switch is off and you issue an "off" command, the light will remain off and
