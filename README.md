@@ -21,16 +21,17 @@ home.
 * Remember your preferences
   * "Hey, whenever I tell you to turn out all the lights, you should still leave the nightlight on in the bedroom"
   * AIHC: "Okay, I will be sure to leave the nightlight on when you turn off all the lights in the future"
-
-## Future Features
-
 * Time based commands:
   * "I'll be getting home from work late tomorrow, can you turn the outside lights on at 6pm?"
   * AIHC: "I will be sure to turn on the Outside Lights at 6pm tomorrow"
+
+## Future Features
+
 * Support for more hubitat capabilities (thermostats, door locks, etc.)
 * Support for local information like weather and sunset/sunrise time
 * A template for more arbitrary integrations
 * Automatic configuration of HE Maker API's POST event setup
+* Probably some model fine-tuning, this thing is really bad at knowing what is in each room and time things
 
 # SETUP
 

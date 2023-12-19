@@ -50,4 +50,7 @@ class OpenAIFunction(Generic[M], ABC):
 
     async def invoke(self, arguments: str) -> str:
         """Invokes this tool with the provided arguments"""
-        return await self.execute(self._get_model_type().model_validate_json(arguments))
+        print(f"'{self.get_name()}' request: {arguments}")
+        result = await self.execute(self._get_model_type().model_validate_json(arguments))
+        print(f"'{self.get_name()}' response: {result}")
+        return result

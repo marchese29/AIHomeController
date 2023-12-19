@@ -7,7 +7,7 @@ from hubitat.client import HubitatClient
 from hubitat.command import DeviceCommandFunction
 from hubitat.query import DeviceQueryFunction
 from hubitat.subscribe import SubscribeFunction, UnsubscribeFunction
-from utilities.time import TimerFunction
+from utilities.time import CurrentTimeFunction, TimeDifferenceFunction, TimerFunction
 
 load_dotenv()
 
@@ -23,12 +23,16 @@ openai_session.load_functions(
      DeviceQueryFunction(he_client),
      SubscribeFunction(he_client, openai_session),
      UnsubscribeFunction(he_client),
-     TimerFunction(openai_session)])
+     TimerFunction(openai_session),
+     TimeDifferenceFunction(),
+     CurrentTimeFunction()])
 
 
 @app.post('/message')
 async def user_prompt():
-    response = await openai_session.handle_user_message(request.form['message'])
+    message = request.form['message']
+    print(f'Message from the User: "{message}"')
+    response = await openai_session.handle_user_message(message)
     return jsonify(response)
 
 
