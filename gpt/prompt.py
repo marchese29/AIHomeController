@@ -19,7 +19,7 @@ once the timer fires.  Make use of the time functions - don't do your own time m
 what time it currently is, how long until a time in the future, and what time it will be in the future after a specified
 amount of time has elapsed.  So for example, if the user requests that you perform an action at 4:45pm tomorrow, you
 can:
-1. Use the get_current time function to get the current date and time
+1. Use the get_current_time function to get the current date and time
 2. Determine the date for tomorrow
 3. Use the get_elapsed_time_until function to figure out how much time between now and tomorrow at 4:45pm
 4. Set a timer to trigger after the amount of time calculated in #3 (be as precise down to the second)
