@@ -2,12 +2,12 @@ from dotenv import load_dotenv
 from flask import Flask, jsonify, request
 
 from gpt.client import OpenAISession
-from gpt.prompt import generate_prompt
+from gpt.prompt import generate_alternative_prompt
 from hubitat.client import HubitatClient
 from hubitat.command import DeviceCommandFunction
 from hubitat.query import DeviceQueryFunction, LayoutFunction
 from hubitat.subscribe import SubscribeFunction, UnsubscribeFunction
-from utilities.time import CurrentTimeFunction, TimeDifferenceFunction, TimerFunction
+from utilities.time import CurrentTimeFunction, TimerFunction
 
 load_dotenv()
 
@@ -17,7 +17,7 @@ he_client = HubitatClient()
 openai_session = OpenAISession()
 
 he_client.load_devices()
-openai_session.load_prompt(generate_prompt(he_client.devices))
+openai_session.load_prompt(generate_alternative_prompt(he_client.devices))
 openai_session.load_functions(
     [DeviceCommandFunction(he_client),
      DeviceQueryFunction(he_client),
@@ -25,7 +25,7 @@ openai_session.load_functions(
      UnsubscribeFunction(he_client),
      LayoutFunction(he_client.devices),
      TimerFunction(openai_session),
-     TimeDifferenceFunction(),
+     # TimeDifferenceFunction(),
      CurrentTimeFunction()])
 
 
