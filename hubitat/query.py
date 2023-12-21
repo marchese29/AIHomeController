@@ -1,9 +1,9 @@
 import asyncio as aio
 import json
 from pydantic import BaseModel, Field
-from typing import Any, Dict, List
+from typing import List
 
-from .client import HubitatClient
+from .client import HubitatClient, HubitatDevice
 from gpt.functions import OpenAIFunction
 
 
@@ -39,4 +39,24 @@ class DeviceQueryFunction(OpenAIFunction[DeviceQueryList]):
         for query in queries.queries:
             tasks.append(aio.create_task(self._he_client.get_attribute(query.device_id, query.attribute)))
         results = await aio.gather(*tasks)
-        return json.dumps(dict(zip([q.device_id for q in queries.queries], results)))
+        return json.dumps(dict(zip([f'{q.device_id}_{q.attribute}' for q in queries.queries], results)))
+
+
+class LayoutRequest(BaseModel):
+    rooms: List[str] = Field(description="The list of rooms to get the device ID's for")
+
+
+class LayoutFunction(OpenAIFunction[LayoutRequest]):
+    """GPT function for reporting the layout of the house."""
+
+    def __init__(self, devices: List[HubitatDevice]):
+        self._devices = devices
+
+    def get_name(self) -> str:
+        return 'get_devices_for_room'
+
+    def get_description(self) -> str:
+        return 'Use this function to get the list of device IDs for any rooms.'
+
+    async def execute(self, request: LayoutRequest) -> str:
+        return json.dumps({room: [dev.id for dev in self._devices if dev.room == room] for room in request.rooms})

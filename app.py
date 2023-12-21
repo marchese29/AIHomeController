@@ -5,7 +5,7 @@ from gpt.client import OpenAISession
 from gpt.prompt import generate_prompt
 from hubitat.client import HubitatClient
 from hubitat.command import DeviceCommandFunction
-from hubitat.query import DeviceQueryFunction
+from hubitat.query import DeviceQueryFunction, LayoutFunction
 from hubitat.subscribe import SubscribeFunction, UnsubscribeFunction
 from utilities.time import CurrentTimeFunction, TimeDifferenceFunction, TimerFunction
 
@@ -23,6 +23,7 @@ openai_session.load_functions(
      DeviceQueryFunction(he_client),
      SubscribeFunction(he_client, openai_session),
      UnsubscribeFunction(he_client),
+     LayoutFunction(he_client.devices),
      TimerFunction(openai_session),
      TimeDifferenceFunction(),
      CurrentTimeFunction()])

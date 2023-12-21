@@ -8,7 +8,8 @@ from util import env_var, JSONObject
 class DeviceAttribute(BaseModel):
     name: str
     value_type: str
-    restrictions: Dict[str, Any] = {}
+    restrictions: Optional[Dict[str, Any]] = None
+    special_info: Optional[str] = None
 
     def __hash__(self):
         return hash(self.name)
@@ -33,7 +34,8 @@ allowed_capabilities: List[str] = ['Switch', 'SwitchLevel', 'MotionSensor', 'Con
                                    'RelativeHumidityMeasurement', 'GarageDoorControl']
 capability_attributes: Dict[str, List[DeviceAttribute]] = {
     'Switch': [DeviceAttribute(name='switch', value_type='string', restrictions={'enum': ['on', 'off']})],
-    'SwitchLevel': [DeviceAttribute(name='level', value_type='integer', restrictions={'minimum': 0, 'maximum': 100})],
+    'SwitchLevel': [DeviceAttribute(name='level', value_type='integer', restrictions={'minimum': 0, 'maximum': 100},
+                                    special_info="A value above 0 indicates that the 'switch' attribute is 'on'")],
     'MotionSensor': [
         DeviceAttribute(name='motion', value_type='string', restrictions={'enum': ['active', 'inactive']})],
     'ContactSensor': [DeviceAttribute(name='contact', value_type='string', restrictions={'enum': ['closed', 'open']})],
@@ -64,13 +66,11 @@ class HubitatDevice(BaseModel):
     attributes: Set[DeviceAttribute]
     commands: Set[DeviceCommand]
 
-    def json_description(self) -> JSONObject:
+    def capabilities_json(self) -> JSONObject:
         return {
-            'id': int(self.id),
+            'id': self.id,
             'name': self.label,
-            'room': self.room,
-            'attributes': [a.name for a in self.attributes],
-            'commands': [c.name for c in self.commands]
+            'capabilities': self.capabilities
         }
 
 
@@ -149,11 +149,13 @@ class HubitatClient:
 
     def subscribe(self, device_id: int, attributes: List[str], callback: EventCallback):
         """Registers the provided callback to be invoked for events on the given device attributes"""
+
         async def subscription(event: DeviceEvent) -> bool:
             if event.attribute in attributes:
                 await callback(event)
                 return True
             return False
+
         self._subscriptions[device_id] = subscription
 
     def unsubscribe(self, device_id: int):

@@ -8,7 +8,7 @@ from gpt.functions import OpenAIFunction
 
 class DeviceCommandItem(BaseModel):
     device_id: int = Field(description='The ID of the device to issue the command to')
-    command: str = Field(description='The command to issue to the device')
+    command: str = Field(description='The name of the command to issue to the device')
     arguments: Optional[List[str | int | float | bool]] = Field(description='The arguments to pass to the command')
 
 
