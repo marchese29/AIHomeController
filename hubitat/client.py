@@ -37,7 +37,8 @@ capability_attributes: Dict[str, List[DeviceAttribute]] = {
     'SwitchLevel': [DeviceAttribute(name='level', value_type='integer', restrictions={'minimum': 0, 'maximum': 100},
                                     special_info="A value above 0 indicates that the 'switch' attribute is 'on'")],
     'MotionSensor': [
-        DeviceAttribute(name='motion', value_type='string', restrictions={'enum': ['active', 'inactive']})],
+        DeviceAttribute(name='motion', value_type='string', restrictions={'enum': ['active', 'inactive']},
+                        special_info="'active' indicates current motion, 'inactive' indicates no motion")],
     'ContactSensor': [DeviceAttribute(name='contact', value_type='string', restrictions={'enum': ['closed', 'open']})],
     'TemperatureMeasurement': [DeviceAttribute(name='temperature', value_type='number')],
     'RelativeHumidityMeasurement': [

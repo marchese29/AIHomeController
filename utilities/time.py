@@ -54,6 +54,40 @@ class TimerFunction(OpenAIFunction[TimerRequest]):
         return 'Success'
 
 
+class ScheduleRequest(BaseModel):
+    name: str = Field(description='A name for the request, must be unique')
+    time: datetime = Field(description='The time at which to trigger the future action')
+
+
+class ScheduledTimerFunction(OpenAIFunction[ScheduleRequest]):
+    """GPT Function for executing a scheduled timer"""
+
+    def __init__(self, ai_session: OpenAISession):
+        self._ai_session = ai_session
+        self._timers: Dict[str, Thread] = {}
+
+    def get_name(self) -> str:
+        return 'schedule_future_action'
+
+    def get_description(self) -> str:
+        return 'Use this function to schedule an action which will trigger at a specific time'
+
+    async def execute(self, request: ScheduleRequest) -> str:
+        if request.name in self._timers:
+            return f'Failed, a timer named "{request.name}" already exists'
+        if request.time < datetime.now(request.time.tzinfo):
+            return f'Failed, timers must occur in the future'
+
+        def callback():
+            del self._timers[request.name]
+
+        diff = request.time - datetime.now(request.time.tzinfo)
+        self._timers[request.name] = Thread(target=fire_timer_with_delay,
+                                            args=(request.name, self._ai_session, diff.total_seconds(), callback()))
+        self._timers[request.name].start()
+        return 'Success'
+
+
 class TimeDifferenceRequest(BaseModel):
     time: datetime = Field(description='The time to measure the difference from')
 

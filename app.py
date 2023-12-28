@@ -7,7 +7,7 @@ from hubitat.client import HubitatClient
 from hubitat.command import DeviceCommandFunction
 from hubitat.query import DeviceQueryFunction, LayoutFunction
 from hubitat.subscribe import SubscribeFunction, UnsubscribeFunction
-from utilities.time import CurrentTimeFunction, TimerFunction
+from utilities.time import CurrentTimeFunction, ScheduledTimerFunction, TimerFunction
 
 load_dotenv()
 
@@ -25,7 +25,7 @@ openai_session.load_functions(
      UnsubscribeFunction(he_client),
      LayoutFunction(he_client.devices),
      TimerFunction(openai_session),
-     # TimeDifferenceFunction(),
+     ScheduledTimerFunction(openai_session),
      CurrentTimeFunction()])
 
 
