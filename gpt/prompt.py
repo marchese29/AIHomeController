@@ -28,7 +28,7 @@ def summarize_capability(capability: str) -> str:
     return result
 
 
-def generate_alternative_prompt(devices: List[HubitatDevice]) -> str:
+def generate_prompt(devices: List[HubitatDevice]) -> str:
     """Let's try a different prompt"""
     prompt = f"""As the AI brain of a smart home located in {env_var('HOME_LOCATION')}, you receive user inputs to
 control smart devices in the home and provide the user with information.  Devices, which have unique ID's, possess one
