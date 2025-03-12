@@ -1,39 +1,47 @@
 from dotenv import load_dotenv
 from flask import Flask, jsonify, request
+from openai import AsyncOpenAI
 
-from gpt.client import OpenAISession
+from gpt.assistant import PromptAssistant
 from gpt.prompt import generate_prompt
 from hubitat.client import HubitatClient
 from hubitat.command import DeviceCommandFunction
 from hubitat.query import DeviceQueryFunction, LayoutFunction
-from hubitat.subscribe import SubscribeFunction, UnsubscribeFunction
-from utilities.time import CurrentTimeFunction, ScheduledTimerFunction, TimerFunction
+from util import env_var
+from utilities.time import CurrentTimeFunction
 
 load_dotenv()
 
 app = Flask(__name__)
 
 he_client = HubitatClient()
-openai_session = OpenAISession()
-
 he_client.load_devices()
-openai_session.load_prompt(generate_prompt(he_client.devices))
-openai_session.load_functions(
-    [DeviceCommandFunction(he_client),
-     DeviceQueryFunction(he_client),
-     SubscribeFunction(he_client, openai_session),
-     UnsubscribeFunction(he_client),
-     LayoutFunction(he_client.devices),
-     TimerFunction(openai_session),
-     ScheduledTimerFunction(openai_session),
-     CurrentTimeFunction()])
+assistant = PromptAssistant(AsyncOpenAI(api_key=env_var('OPENAI_KEY')),
+                            generate_prompt(he_client.devices),
+                            tools=[
+                                DeviceCommandFunction(he_client),
+                                DeviceQueryFunction(he_client),
+                                LayoutFunction(he_client.devices),
+                                CurrentTimeFunction()
+                            ])
+
+
+# openai_session.load_functions(
+#     [DeviceCommandFunction(he_client),
+#      DeviceQueryFunction(he_client),
+#      SubscribeFunction(he_client, openai_session),
+#      UnsubscribeFunction(he_client),
+#      LayoutFunction(he_client.devices),
+#      TimerFunction(openai_session),
+#      ScheduledTimerFunction(openai_session),
+#      CurrentTimeFunction()])
 
 
 @app.post('/message')
 async def user_prompt():
     message = request.form['message']
     print(f'Message from the User: "{message}"')
-    response = await openai_session.handle_user_message(message)
+    response = await assistant.handle_user_message(message)
     return jsonify(response)
 
 
