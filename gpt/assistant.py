@@ -1,7 +1,7 @@
 import asyncio as aio
 from typing import List, Optional
 
-from openai import AsyncOpenAI, AsyncAssistantEventHandler
+from openai import AsyncOpenAI
 from openai.types.beta import Assistant, Thread
 from openai.types.beta.threads import RequiredActionFunctionToolCall
 
@@ -9,7 +9,7 @@ from gpt.functions import OpenAIFunction
 from util import env_var, JSONObject
 
 
-class PromptAssistant(AsyncAssistantEventHandler):
+class PromptAssistant:
     """The assistant for the main prompt of the home."""
 
     @property
