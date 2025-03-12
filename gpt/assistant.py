@@ -12,14 +12,6 @@ from util import env_var, JSONObject
 class PromptAssistant:
     """The assistant for the main prompt of the home."""
 
-    @property
-    def assistant_id(self) -> str:
-        return self._assistant.id
-
-    @property
-    def thread_id(self) -> str:
-        return self._thread.id
-
     def __init__(self, client: AsyncOpenAI, prompt: str, model: str = env_var('GPT_MODEL'),
                  tools: Optional[List[OpenAIFunction]] = None):
         super().__init__()
