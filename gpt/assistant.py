@@ -14,8 +14,6 @@ class PromptAssistant:
 
     def __init__(self, client: AsyncOpenAI, prompt: str, model: str = env_var('GPT_MODEL'),
                  tools: Optional[List[OpenAIFunction]] = None):
-        super().__init__()
-
         self._client = client
         self._model = model
         self._tool_map = {f.get_name(): f for f in tools} if tools is not None else {}
