@@ -1,21 +1,31 @@
+import asyncio as aio
+from typing import Optional
+
 from dotenv import load_dotenv
-from flask import Flask, jsonify, request
 from openai import AsyncOpenAI
+from quart import Quart, jsonify, request
 
 from gpt.assistant import PromptAssistant
 from gpt.prompt import generate_prompt
+from hubitat.rules.manager import RuleManager
+from hubitat.rules.model import Rule
 from hubitat.client import HubitatClient
 from hubitat.command import DeviceCommandFunction
 from hubitat.query import DeviceQueryFunction, LayoutFunction
 from util import env_var
 from utilities.time import CurrentTimeFunction
 
+print("Starting application...")  # Debug print statement
 load_dotenv()
 
-app = Flask(__name__)
+app = Quart(__name__)
 
 he_client = HubitatClient()
 he_client.load_devices()
+
+rule_manager = RuleManager(he_client)
+rule_process_lock: Optional[aio.Lock] = None
+
 assistant = PromptAssistant(AsyncOpenAI(api_key=env_var('OPENAI_KEY')),
                             generate_prompt(he_client.devices),
                             tools=[
@@ -26,20 +36,10 @@ assistant = PromptAssistant(AsyncOpenAI(api_key=env_var('OPENAI_KEY')),
                             ])
 
 
-# openai_session.load_functions(
-#     [DeviceCommandFunction(he_client),
-#      DeviceQueryFunction(he_client),
-#      SubscribeFunction(he_client, openai_session),
-#      UnsubscribeFunction(he_client),
-#      LayoutFunction(he_client.devices),
-#      TimerFunction(openai_session),
-#      ScheduledTimerFunction(openai_session),
-#      CurrentTimeFunction()])
-
-
 @app.post('/message')
 async def user_prompt():
-    message = request.form['message']
+    """Handles a user prompt and returns a response from the assistant"""
+    message = (await request.form)['message']
     print(f'Message from the User: "{message}"')
     response = await assistant.handle_user_message(message)
     return jsonify(response)
@@ -47,8 +47,26 @@ async def user_prompt():
 
 @app.post('/he_event')
 async def hubitat_device_event():
-    await he_client.handle_device_event(request.json['content'])
+    """Endpoint that hubitat invokes when a device event occurs"""
+    async with rule_process_lock:
+        await he_client.handle_device_event((await request.json)['content'])
+        return 'Success'
+
+
+@app.post('/install_rule')
+async def install_rule():
+    """Endpoint for manually installing a rule without the assistant"""
+    rule = await request.json
+    async with rule_process_lock:
+        await rule_manager.install_rule(Rule.model_validate(rule))
     return 'Success'
+
+
+@app.before_serving
+async def startup():
+    # We only allow one thing to interact with the rule process at a time
+    global rule_process_lock
+    rule_process_lock = aio.Lock()
 
 
 if __name__ == '__main__':
