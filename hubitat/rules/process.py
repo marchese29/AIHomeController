@@ -1,9 +1,12 @@
-from abc import abstractmethod, ABC
+from abc import ABC, abstractmethod
 from collections import deque
 from collections.abc import Awaitable, Callable
+from datetime import timedelta, time
 from typing import Any, Optional
 
-from hubitat.client import HubitatClient, DeviceEvent
+from hubitat.client import DeviceEvent, HubitatClient
+from hubitat.rules.clock import ClockService
+from hubitat.rules.timers import TimerService
 
 DeviceState = dict[str, Any]
 Action = Callable[['ConditionManager'], Awaitable[None]]
@@ -31,7 +34,37 @@ class Condition(ABC):
     @property
     def action(self) -> Optional[Action]:
         """The action to execute when this condition is met."""
+        return getattr(self, '_action', None)
+
+    @action.setter
+    def action(self, value: Action):
+        """Set the action to execute when this condition is met."""
+        self._action = value
+    
+    @property
+    def duration(self) -> Optional[int]:
+        """The duration (in seconds) that this condition must remain true before triggering actions."""
         return None
+    
+    @property
+    def timeout(self) -> Optional[timedelta]:
+        """The timeout for this condition."""
+        return None
+    
+    @property
+    def timeout_action(self) -> Optional[Action]:
+        """The action to execute when this condition times out."""
+        return getattr(self, '_timeout_action', None)
+
+    @timeout_action.setter
+    def timeout_action(self, value: Action):
+        """Set the action to execute when this condition times out."""
+        self._timeout_action = value
+    
+    @property
+    def check_times(self) -> Optional[list[time]]:
+        """The times of day to check the condition."""
+        return []
 
     @property
     def trigger_always(self) -> bool:
@@ -62,6 +95,10 @@ class ConditionManager:
     
     def __init__(self, rpm: 'RuleProcessManager'):
         self._rpm = rpm
+    
+    async def add_condition(self, condition: 'Condition'):
+        """Adds a new condition to the process manager."""
+        await self._rpm.add_condition(condition)
         
     def remove_condition(self, condition: 'Condition'):
         """Removes a condition from the process manager."""
@@ -73,6 +110,8 @@ class RuleProcessManager:
 
     def __init__(self, he_client: HubitatClient):
         self._he_client = he_client
+        self._timer_service = TimerService()
+        self._clock_service = ClockService()
 
         # ConditionId -> Condition
         self._conditions: dict[str, tuple[Condition, bool]] = {}
@@ -95,8 +134,53 @@ class RuleProcessManager:
         for (device_id, attrs) in new_device_attrs.items():
             self._he_client.subscribe(device_id, list(attrs), self._on_device_event)
 
+        # Start timeout timer if condition has a timeout
+        if condition.timeout and condition.timeout_action:
+            await self._timer_service.start_timer(
+                f"condition_to({condition.identifier})",
+                condition.timeout,
+                self._on_condition_timeout(condition)
+            )
+        elif condition.check_times is not None:
+            for check_time in condition.check_times:
+                await self._clock_service.start_clock(
+                    f"time_check({condition.identifier}-{check_time})",
+                    check_time,
+                    self._on_condition_check_time(condition)
+                )
+
+    def _on_condition_timeout(self, condition: Condition):
+        """Handles timeout expiration for a condition"""
+        async def inner(_timer_id: str):
+            if condition.identifier in self._conditions and condition.timeout_action:
+                condition_manager = ConditionManager(self)
+                await condition.timeout_action(condition_manager)
+        return inner
+
+    def _on_condition_duration(self, condition: Condition):
+        """Handles duration expiration for a condition"""
+        async def inner(_timer_id: str):
+            if condition.identifier in self._conditions and condition.action:
+                condition_manager = ConditionManager(self)
+                await condition.action(condition_manager)
+        return inner
+    
+    def _on_condition_check_time(self, condition: Condition):
+        """Handles time of day check for a condition"""
+        async def inner(_clock_id: str):
+            if condition.identifier in self._conditions:
+                await self._process_condition_change([condition])
+        return inner
+
     def remove_condition(self, condition: Condition):
         """Removes a condition from the process manager"""
+        # Cancel timeout timer if it exists
+        self._timer_service.cancel_timer(f"condition_to({condition.identifier})")
+        # Cancel duration timer if it exists
+        self._timer_service.cancel_timer(f"condition_dur({condition.identifier})")
+        for check_time in condition.check_times:
+            self._clock_service.cancel_clock(f"time_check({condition.identifier}-{check_time})")
+
         # Remove condition from tracking
         if condition.identifier in self._conditions:
             del self._conditions[condition.identifier]
@@ -194,9 +278,6 @@ class RuleProcessManager:
         device_id = int(event.device_id)
         attr = event.attribute
 
-        # Get a snapshot of our existing state so we can see what changed
-        previous_state = {cid: self._conditions[cid][1] for cid in self._conditions.keys()}
-
         # Update the state of our device tracking
         self._latest_attributes[device_id][attr] = event.value
 
@@ -205,13 +286,39 @@ class RuleProcessManager:
         for imp_condition in impacted:
             imp_condition.on_device_event(event)
 
+        await self._process_condition_change(impacted)
+        
+    async def _process_condition_change(self, impacted: list[Condition]):
+        """Processes a condition change"""
+        # Get a snapshot of our existing state so we can see what changed
+        previous_state = {cid: self._conditions[cid][1] for cid in self._conditions.keys()}
+        
         # Propagate the state change to transitively impacted conditions
         touched_conditions = self._propagate_state_update(impacted)
 
-        # Trigger actions where appropriate
+        # Handle duration timers and trigger actions where appropriate
         condition_manager = ConditionManager(self)
         for condition in [c for c in touched_conditions if c.action is not None]:
             curr = self._conditions[condition.identifier][1]
             prev = previous_state[condition.identifier]
+            
+            # Handle duration timer
+            if condition.duration is not None:
+                if curr is True and prev is False:
+                    # Condition just became true, start duration timer
+                    await self._timer_service.start_timer(
+                        f"condition_dur({condition.identifier})",
+                        timedelta(seconds=condition.duration),
+                        self._on_condition_duration(condition)
+                    )
+                elif curr is False and prev is True:
+                    # Condition became false, cancel duration timer
+                    self._timer_service.cancel_timer(f"condition_dur({condition.identifier})")
+            
+            # Handle immediate triggers
             if (curr is True and prev is False) or (curr is True and condition.trigger_always):
+                # Cancel any duration timer before executing the action
+                self._timer_service.cancel_timer(f"condition_dur({condition.identifier})")
+                # Cancel any timeout timer before executing the action
+                self._timer_service.cancel_timer(f"condition_to({condition.identifier})")
                 await condition.action(condition_manager)

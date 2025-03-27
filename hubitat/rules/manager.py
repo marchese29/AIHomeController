@@ -3,204 +3,45 @@ Rule management system for Hubitat automation.
 
 This module provides the core functionality for managing and executing automation rules
 in the Hubitat ecosystem. It handles:
-- Condition evaluation (device states and boolean combinations)
 - Rule installation and execution
 - Action sequencing and control flow
 - Device state monitoring and event handling
 """
 
-from typing import Optional, override
+from datetime import timedelta
 
-from hubitat.client import HubitatClient, DeviceEvent
-from hubitat.rules.model import (BooleanCondition, DeviceCondition,
-                               DeviceControlAction, IfThenElseAction, Rule,
-                               StateCondition, UntilAction, WaitAction)
-from hubitat.rules.process import Action, Condition, DeviceState, RuleProcessManager, ConditionManager
-
-
-def _condition_identifier(condition: StateCondition) -> str:
-    """Generate a human-readable identifier for a condition.
-    
-    Args:
-        condition: The condition to generate an identifier for
-        
-    Returns:
-        A string identifier representing the condition's logic
-    """
-    match condition:
-        case DeviceCondition() as device_condition:
-            return (f"hubitat({device_condition.device_id}-{device_condition.attribute}) "
-                   f"{device_condition.operator} {device_condition.value}")
-        case BooleanCondition() as bool_condition:
-            return f' {bool_condition.operator} '.join(
-                [f'({_condition_identifier(c)})' for c in bool_condition.conditions])
-        case _:
-            raise ValueError(f"Unknown condition type: {type(condition)}")
-
-
-def _condition_for_model(
-        condition: StateCondition,
-        on_trigger: Optional[Action] = None,
-        delete_on_trigger: bool = False) -> Condition:
-    """Create a Condition instance from a model condition.
-    
-    Args:
-        condition: The model condition to convert
-        on_trigger: Optional action to execute when the condition is triggered
-        delete_on_trigger: Whether to remove the condition after triggering
-        
-    Returns:
-        A Condition instance appropriate for the model type
-    """
-    match condition:
-        case DeviceCondition() as device_condition:
-            return _DeviceCondition(device_condition, on_trigger, delete_on_trigger)
-        case BooleanCondition() as bool_condition:
-            return _BooleanCondition(bool_condition, on_trigger, delete_on_trigger)
-        case _:
-            raise ValueError(f"Unknown condition type: {type(condition)}")
+from hubitat.client import HubitatClient
+from hubitat.rules.condition import (
+    BooleanStateCondition,
+    condition_for_model,
+    DeviceStateCondition,
+    TimeOfDayStateCondition,
+)
+from hubitat.rules.model import (
+    BooleanCondition,
+    DeviceCondition,
+    DeviceControlAction,
+    IfThenElseAction,
+    ModelAction,
+    Rule,
+    TimeOfDayCondition,
+    UntilAction,
+    WaitAction,
+)
+from hubitat.rules.process import (
+    Action,
+    Condition,
+    ConditionManager,
+    RuleProcessManager,
+)
 
 
-class _DeviceCondition(Condition):
-    """Condition that evaluates based on a device's attribute value.
-    
-    This condition monitors a specific device attribute and evaluates to true
-    when the attribute matches the specified operator and value.
-    """
-    
-    def __init__(self, model: DeviceCondition, on_trigger: Optional[Action] = None, delete_on_trigger: bool = False):
-        self._model = model
-        self._on_trigger = on_trigger
-        self._delete_on_trigger = delete_on_trigger
-        self._device_value = None
-        self._value_type = type(model.value)
-
-    @property
-    @override
-    def identifier(self) -> str:
-        return _condition_identifier(self._model)
-
-    @property
-    @override
-    def devices(self) -> dict[int, set[str]]:
-        return {self._model.device_id: {self._model.attribute}}
-
-    @property
-    @override
-    def action(self) -> Optional[Action]:
-        async def on_trigger(cm: ConditionManager):
-            if self._on_trigger is not None:
-                await self._on_trigger(cm)
-            if self._delete_on_trigger:
-                cm.remove_condition(self)
-        return on_trigger
-
-    @override
-    def initialize(self, attrs: dict[int, DeviceState], conditions: dict[str, bool]) -> bool:
-        self._device_value = self._cast_value(attrs[self._model.device_id][self._model.attribute])
-        return self.evaluate()
-
-    @override
-    def on_device_event(self, event: DeviceEvent):
-        self._device_value = self._cast_value(event.value)
-
-    def _cast_value(self, value: any) -> any:
-        """Cast the incoming value to match the model value type.
-        
-        Args:
-            value: The value to cast
-            
-        Returns:
-            The value cast to the appropriate type
-        """
-        if value is None:
-            return None
-            
-        try:
-            if self._value_type == bool:
-                if isinstance(value, str):
-                    return value.lower() in ('true', '1', 'yes', 'on')
-                return bool(value)
-            elif self._value_type == int:
-                return int(value)
-            elif self._value_type == float:
-                return float(value)
-            elif self._value_type == str:
-                return str(value)
-            return value
-        except (ValueError, TypeError):
-            return value
-
-    @override
-    def evaluate(self) -> bool:
-        match self._model.operator:
-            case "==":
-                return self._device_value == self._model.value
-            case "!=":
-                return self._device_value != self._model.value
-            case ">":
-                return self._device_value > self._model.value
-            case ">=":
-                return self._device_value >= self._model.value
-            case "<":
-                return self._device_value < self._model.value
-            case "<=":
-                return self._device_value <= self._model.value
-            case _:
-                raise ValueError(f"Unknown operator: {self._model.operator}")
+class _ExitAction:
+    """Action that stops the execution of remaining actions."""
+    pass
 
 
-class _BooleanCondition(Condition):
-    """Condition that combines multiple subconditions with boolean logic.
-    
-    This condition evaluates multiple subconditions and combines their results
-    using AND or OR operators.
-    """
-    
-    def __init__(self, model: BooleanCondition, on_trigger: Optional[Action] = None, delete_on_trigger: bool = False):
-        self._model = model
-        self._subconditions: dict[str, tuple[Condition, bool]] = {}
-        for subcondition in model.conditions:
-            condition = _condition_for_model(subcondition)
-            self._subconditions[condition.identifier] = (condition, False)
-        self._on_trigger = on_trigger
-        self._delete_on_trigger = delete_on_trigger
-
-    @property
-    @override
-    def identifier(self) -> str:
-        return _condition_identifier(self._model)
-
-    @property
-    @override
-    def conditions(self) -> list[Condition]:
-        return [c for (c, _) in self._subconditions.values()]
-
-    @property
-    @override
-    def action(self) -> Optional[Action]:
-        async def on_trigger(cm: ConditionManager):
-            if self._on_trigger is not None:
-                await self._on_trigger(cm)
-            if self._delete_on_trigger:
-                cm.remove_condition(self)
-        return on_trigger
-
-    @override
-    def initialize(self, attrs: dict[int, DeviceState], conditions: dict[str, bool]) -> bool:
-        for (condition_id, state) in conditions.items():
-            self._subconditions[condition_id] = (self._subconditions[condition_id][0], state)
-        return self.evaluate()
-
-    @override
-    def evaluate(self) -> bool:
-        match self._model.operator:
-            case "and":
-                return all([state for (_, state) in self._subconditions.values()])
-            case "or":
-                return any([state for (_, state) in self._subconditions.values()])
-            case _:
-                raise ValueError(f"Unknown operator: {self._model.operator}")
+InternalAction = ModelAction | _ExitAction
 
 
 class RuleManager:
@@ -222,71 +63,176 @@ class RuleManager:
         """
         match rule.trigger:
             case DeviceCondition() as trigger:
-                async def on_action(_cm: ConditionManager):
-                    await self._invoke_actions(rule.actions)
-                await self._process.add_condition(_DeviceCondition(trigger, on_action))
+                condition = DeviceStateCondition(trigger)
+                on_trigger = self._on_rule_triggered(rule, condition)
+                condition.action = on_trigger
+                await self._process.add_condition(condition)
             case BooleanCondition() as trigger:
-                async def on_action(_cm: ConditionManager):
-                    await self._invoke_actions(rule.actions)
-                await self._process.add_condition(_BooleanCondition(trigger, on_action))
+                condition = BooleanStateCondition(trigger)
+                on_trigger = self._on_rule_triggered(rule, condition)
+                condition.action = on_trigger                
+                await self._process.add_condition(condition)
+            case TimeOfDayCondition() as trigger:
+                condition = TimeOfDayStateCondition(trigger)
+                on_trigger = self._on_rule_triggered(rule, condition)
+                condition.action = on_trigger
+                await self._process.add_condition(condition)
             case _:
                 raise ValueError(f"Unknown trigger type: {type(rule.trigger)}")
+    
+    def _on_rule_triggered(self, rule: Rule, trigger: Condition) -> Action:
+        async def action(cm: ConditionManager):
+            cm.remove_condition(trigger)
+            await self._invoke_actions(rule.actions + [_ExitAction()], trigger)
+        return action
+    
+    def _on_condition_triggered(
+        self,
+        condition: Condition,
+        remaining_actions: list[InternalAction],
+        rule_trigger: Condition
+    ) -> Action:
+        async def inner(cm: ConditionManager):
+            cm.remove_condition(condition)
+            await self._invoke_actions(remaining_actions, rule_trigger)
+        return inner
 
-    async def _invoke_actions(self, actions: list[Action]):
-        """Execute a sequence of actions until a blocking action is encountered.
+    def _on_condition_timeout(
+        self,
+        condition: Condition,
+        remaining_actions: list[InternalAction],
+        rule_trigger: Condition,
+        exit_on_timeout: bool = False
+    ) -> Action:
+        async def inner(cm: ConditionManager):
+            cm.remove_condition(condition)
+            if not exit_on_timeout:
+                await self._invoke_actions(remaining_actions, rule_trigger)
+            else:
+                await self._invoke_actions([_ExitAction()], rule_trigger)
+        return inner
+
+    async def _invoke_actions(
+        self, 
+        actions: list[InternalAction], 
+        rule_trigger: Condition
+    ):
+        """Execute a sequence of actions.
+        
+        This method processes a list of actions sequentially. For each action, it 
+        delegates to the appropriate handler method based on the action type. The 
+        handler methods determine whether to continue executing remaining actions 
+        immediately or wait for some condition.
         
         Args:
             actions: The list of actions to execute
         """
-        for i in range(len(actions)):
-            if await self._invoke_action(actions[i], actions[i+1:]):
-                break
-
-    async def _invoke_action(self, action: Action, remaining_actions: list[Action]) -> bool:
-        """Execute a single action and return whether it blocks subsequent actions.
-        
-        Args:
-            action: The action to execute
-            remaining_actions: Actions that would follow this one
+        if not actions:
+            return
             
-        Returns:
-            True if the action blocks subsequent actions, False otherwise
-        """
+        action = actions[0]
+        remaining_actions = actions[1:]
         match action:
             case DeviceControlAction() as device_action:
-                await self._he_client.send_command(
-                    device_action.device_id,
-                    device_action.command,
-                    device_action.arguments
+                await self._handle_device_control(
+                    device_action, remaining_actions, rule_trigger
                 )
-                return False
-
             case IfThenElseAction() as if_else_action:
-                condition = _condition_for_model(if_else_action.if_condition, delete_on_trigger=True)
-                await self._process.add_condition(condition)
-                state = self._process.check_condition_state(condition)
-
-                if state:
-                    await self._invoke_actions(if_else_action.then_actions)
-                elif if_else_action.else_actions is not None:
-                    await self._invoke_actions(if_else_action.else_actions)
-                return False
-
+                await self._handle_if_then_else(
+                    if_else_action, remaining_actions, rule_trigger
+                )
             case UntilAction() as until_action:
-                async def on_trigger(_cm: ConditionManager):
-                    await self._invoke_actions(until_action.until_actions)
-
-                condition = _condition_for_model(until_action.condition, on_trigger, delete_on_trigger=True)
-                await self._process.add_condition(condition)
-                return True
-
+                await self._handle_until(
+                    until_action, remaining_actions, rule_trigger
+                )
             case WaitAction() as wait_action:
-                async def on_trigger(_cm: ConditionManager):
-                    await self._invoke_actions(remaining_actions)
-
-                condition = _condition_for_model(wait_action.condition, on_trigger, delete_on_trigger=True)
-                await self._process.add_condition(condition)
-                return True
-
+                await self._handle_wait(
+                    wait_action, remaining_actions, rule_trigger
+                )
+            case _ExitAction():
+                await self._process.add_condition(rule_trigger)
             case _:
-                raise NotImplementedError(f"Unsupported action type: {type(action)}")
+                raise NotImplementedError(
+                    f"Unsupported action type: {type(action)}"
+                )
+
+    async def _handle_device_control(
+        self, 
+        action: DeviceControlAction, 
+        remaining_actions: list[InternalAction], 
+        rule_trigger: Condition
+    ):
+        """Handle a device control action."""
+        await self._he_client.send_command(
+            action.device_id,
+            action.command,
+            action.arguments,
+        )
+        await self._invoke_actions(remaining_actions, rule_trigger)
+
+    async def _handle_if_then_else(
+        self, 
+        action: IfThenElseAction, 
+        remaining_actions: list[InternalAction], 
+        rule_trigger: Condition
+    ):
+        """Handle an if-then-else action."""
+        condition = condition_for_model(action.if_condition)
+        
+        # Add the condition to the process manager, get state, then remove it
+        await self._process.add_condition(condition)
+        state = self._process.check_condition_state(condition)
+        self._process.remove_condition(condition)
+
+        if state:
+            await self._invoke_actions(
+                action.then_actions + remaining_actions, rule_trigger
+            )
+        elif action.else_actions is not None:
+            await self._invoke_actions(
+                action.else_actions + remaining_actions, rule_trigger
+            )
+        else:
+            await self._invoke_actions(remaining_actions, rule_trigger)
+
+    async def _handle_until(
+        self, 
+        action: UntilAction, 
+        remaining_actions: list[InternalAction], 
+        rule_trigger: Condition
+    ):
+        """Handle an until action."""
+        timeout = (
+            timedelta(seconds=action.timeout) 
+            if action.timeout is not None 
+            else None
+        )
+        condition = condition_for_model(action.condition, timeout)
+        condition.action = self._on_condition_triggered(
+            condition, action.until_actions + remaining_actions, rule_trigger
+        )
+        condition.timeout_action = self._on_condition_timeout(
+            condition, action.timeout_actions + remaining_actions, rule_trigger
+        )
+        await self._process.add_condition(condition)
+
+    async def _handle_wait(
+        self, 
+        action: WaitAction, 
+        remaining_actions: list[InternalAction], 
+        rule_trigger: Condition
+    ):
+        """Handle a wait action."""
+        timeout = (
+            timedelta(seconds=action.timeout) 
+            if action.timeout is not None 
+            else None
+        )
+        condition = condition_for_model(action.condition, timeout)
+        condition.action = self._on_condition_triggered(
+            condition, remaining_actions, rule_trigger
+        )
+        condition.timeout_action = self._on_condition_timeout(
+            condition, remaining_actions, rule_trigger, action.end_on_timeout
+        )
+        await self._process.add_condition(condition)
