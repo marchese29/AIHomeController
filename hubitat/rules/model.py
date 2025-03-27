@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 
 
 class DeviceCondition(BaseModel):
-    kind: Literal['device_condition']
+    kind: Literal['device']
     device_id: int = Field(description='The ID of the device to check the condition for')
     attribute: str = Field(description='The name of the device attribute to check the value for')
     operator: Literal['=', '!=', '<', '<=', '>', '>='] = Field(description='The comparison operator to use')
@@ -13,7 +13,7 @@ class DeviceCondition(BaseModel):
 
 
 class BooleanCondition(BaseModel):
-    kind: Literal['boolean_condition']
+    kind: Literal['boolean']
     operator: Literal['and', 'or', 'not']
     conditions: list['StateCondition'] = Field(description='The list of conditions to combine')
     duration: Optional[int] = Field(default=None, description='How long (in seconds) the condition must remain true before triggering actions')
@@ -33,7 +33,7 @@ StateCondition = Annotated[
 
 
 class DeviceControlAction(BaseModel):
-    kind: Literal['device_control']
+    kind: Literal['device']
     device_id: int = Field(description='The ID of the device to control')
     command: str = Field(description='The command to send to the device')
     arguments: Optional[list[str | int | float | bool]] = Field(default=None, description='Optional list of arguments to pass with the command')

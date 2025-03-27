@@ -170,6 +170,8 @@ class BooleanStateCondition(Condition):
         for subcondition in model.conditions:
             condition = condition_for_model(subcondition)
             self._subconditions[condition.identifier] = (condition, False)
+        if model.operator == 'not' and len(self._subconditions) != 1:
+            raise ValueError("Boolean operator 'not' requires exactly one subcondition")
         self._timeout = timeout
         self._instance_number = BooleanStateCondition._instance_counter
         BooleanStateCondition._instance_counter += 1
@@ -210,6 +212,8 @@ class BooleanStateCondition(Condition):
                 return all([state for (_, state) in self._subconditions.values()])
             case "or":
                 return any([state for (_, state) in self._subconditions.values()])
+            case "not":
+                return not [state for (_, state) in self._subconditions.values()][0]
             case _:
                 raise ValueError(f"Unknown operator: {self._model.operator}")
 
