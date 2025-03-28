@@ -1,3 +1,9 @@
+"""Main application module for the AI Home Control system.
+
+This module serves as the entry point for the AI Home Control application,
+providing HTTP endpoints for user interaction and Hubitat device event handling.
+"""
+
 import asyncio as aio
 from typing import Optional
 
@@ -24,7 +30,7 @@ he_client = HubitatClient()
 he_client.load_devices()
 
 rule_manager = RuleManager(he_client)
-rule_process_lock: Optional[aio.Lock] = None
+RULE_PROCESS_LOCK: Optional[aio.Lock] = None
 
 assistant = PromptAssistant(AsyncOpenAI(api_key=env_var('OPENAI_KEY')),
                             generate_prompt(he_client.devices),
@@ -48,7 +54,7 @@ async def user_prompt():
 @app.post('/he_event')
 async def hubitat_device_event():
     """Endpoint that hubitat invokes when a device event occurs"""
-    async with rule_process_lock:
+    async with RULE_PROCESS_LOCK:
         await he_client.handle_device_event((await request.json)['content'])
         return 'Success'
 
@@ -57,16 +63,20 @@ async def hubitat_device_event():
 async def install_rule():
     """Endpoint for manually installing a rule without the assistant"""
     rule = await request.json
-    async with rule_process_lock:
+    async with RULE_PROCESS_LOCK:
         await rule_manager.install_rule(Rule.model_validate(rule))
     return 'Success'
 
 
 @app.before_serving
 async def startup():
-    # We only allow one thing to interact with the rule process at a time
-    global rule_process_lock
-    rule_process_lock = aio.Lock()
+    """Initialize application state before serving requests.
+    
+    This function is called by Quart before the application starts serving requests.
+    It initializes the rule process lock to ensure thread-safe rule processing.
+    """
+    global RULE_PROCESS_LOCK
+    RULE_PROCESS_LOCK = aio.Lock()
 
 
 if __name__ == '__main__':
