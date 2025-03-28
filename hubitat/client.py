@@ -168,7 +168,10 @@ class HubitatClient:
         resp = httpx.get(f"{self._address}/devices/all", params={'access_token': self._token})
 
         for dev in resp.json():
-            caps = [c for c in dev['capabilities'] if isinstance(c, str) and c in allowed_capabilities]
+            caps = [
+                c for c in dev['capabilities']
+                if isinstance(c, str) and c in allowed_capabilities
+            ]
             attributes = set()
             commands = set()
             for capability in caps:
