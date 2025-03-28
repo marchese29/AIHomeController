@@ -1,4 +1,5 @@
-from pydantic import BaseModel
+"""Module for managing clock-based triggers that fire at specific times of day."""
+
 import asyncio as aio
 from asyncio import Task
 from typing import Awaitable, Callable

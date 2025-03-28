@@ -1,3 +1,5 @@
+"""Module for managing rule conditions and their evaluation in the Hubitat automation system."""
+
 from abc import ABC, abstractmethod
 from collections import deque
 from collections.abc import Awaitable, Callable
@@ -19,7 +21,6 @@ class Condition(ABC):
     @abstractmethod
     def identifier(self) -> str:
         """A unique identifier for this condition."""
-        ...
 
     @property
     def devices(self) -> dict[int, set[str]]:
@@ -78,16 +79,13 @@ class Condition(ABC):
 
     def on_device_event(self, event: DeviceEvent):
         """Called to update the state of a dependent device"""
-        pass
 
     def on_condition_event(self, condition: 'Condition', triggered: bool):
         """Called to report a sub-condition state update"""
-        pass
 
     @abstractmethod
     def evaluate(self) -> bool:
         """Evaluates if the condition is currently met"""
-        ...
 
 
 class ConditionManager:
@@ -128,7 +126,8 @@ class RuleProcessManager:
         await self._fetch_new_attributes(new_device_attrs)
         init_cond_states = await self._initialize_sub_conditions(condition)
         init_attrs = self._prepare_init_attributes(condition)
-        self._conditions[condition.identifier] = (condition, condition.initialize(init_attrs, init_cond_states))
+        state = condition.initialize(init_attrs, init_cond_states)
+        self._conditions[condition.identifier] = (condition, state)
 
         # Subscribe to any relevant device events
         for (device_id, attrs) in new_device_attrs.items():
@@ -148,6 +147,14 @@ class RuleProcessManager:
                     check_time,
                     self._on_condition_check_time(condition)
                 )
+        
+        # Start duration timer if condition is true already
+        if state is True and condition.duration is not None:
+            await self._timer_service.start_timer(
+                f"condition_dur({condition.identifier})",
+                timedelta(seconds=condition.duration),
+                self._on_condition_duration(condition)
+            )
 
     def _on_condition_timeout(self, condition: Condition):
         """Handles timeout expiration for a condition"""
@@ -192,14 +199,17 @@ class RuleProcessManager:
                 # If no more conditions care about this attribute
                 if len(self._tracked_devices[device_id][attr]) == 0:
                     # Unsubscribe from this attribute
-                    self._he_client.unsubscribe(device_id, self._on_device_event)
+                    self._he_client.unsubscribe(device_id)
                     del self._tracked_devices[device_id][attr]
                     del self._latest_attributes[device_id][attr]
                     if len(self._tracked_devices[device_id]) == 0:
                         del self._tracked_devices[device_id]
+                    if len(self._latest_attributes[device_id]) == 0:
+                        del self._latest_attributes[device_id]
         
         # Recursively remove conditions from dependencies
-        del self._condition_deps[condition.identifier]
+        if condition.identifier in self._condition_deps:
+            del self._condition_deps[condition.identifier]
         for sub_condition in condition.conditions:
             if sub_condition.identifier in self._conditions:
                 self.remove_condition(sub_condition)

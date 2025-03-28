@@ -116,8 +116,14 @@ class HubitatClient:
         if arguments is not None and len(arguments) > 0:
             url += f"/{','.join([str(a) for a in arguments])}"
 
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(url, params={'access_token': self._token})
+        with httpx.Client() as client:
+            try:
+                resp = client.get(url, params={'access_token': self._token})
+            except httpx.HTTPStatusError as e:
+                raise Exception(f"HE Client returned '{e.response.status_code}' status: {e.response.text}")
+            except BaseException as e:
+                print(f"HE Client returned error: {e}")
+                raise e
         if resp.status_code != 200:
             raise Exception(f"HE Client returned '{resp.status_code}' status: {resp.text}")
 

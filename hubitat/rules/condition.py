@@ -10,30 +10,6 @@ from hubitat.rules.model import (
 )
 from hubitat.rules.process import Condition, DeviceState
 
-def _condition_identifier(condition: StateCondition) -> str:
-    """Generate a human-readable identifier for a condition.
-    
-    Args:
-        condition: The condition to generate an identifier for
-        
-    Returns:
-        A string identifier representing the condition's logic
-    """
-    match condition:
-        case DeviceCondition() as device_condition:
-            return (
-                f"hubitat({device_condition.device_id}-{device_condition.attribute} "
-                f"{device_condition.operator} {device_condition.value})"
-            )
-        case BooleanCondition() as bool_condition:
-            return f' {bool_condition.operator} '.join(
-                [f'({_condition_identifier(c)})' for c in bool_condition.conditions]
-            )
-        case TimeOfDayCondition() as time_condition:
-            return f"time_of_day({time_condition.operator} {time_condition.hour:02d}:{time_condition.minute:02d})"
-        case _:
-            raise ValueError(f"Unknown condition type: {type(condition)}")
-
 
 def condition_for_model(condition: StateCondition, timeout: Optional[timedelta] = None) -> Condition:
     """Create a Condition instance from a model condition.
@@ -51,6 +27,10 @@ def condition_for_model(condition: StateCondition, timeout: Optional[timedelta] 
             return DeviceStateCondition(device_condition, timeout)
         case BooleanCondition() as bool_condition:
             return BooleanStateCondition(bool_condition, timeout)
+        case TimeOfDayCondition() as time_condition:
+            return TimeOfDayStateCondition(time_condition)
+        case TrueCondition() as true_condition:
+            return TrueCondition(timeout)
         case _:
             raise ValueError(f"Unknown condition type: {type(condition)}")
 
@@ -76,8 +56,10 @@ class DeviceStateCondition(Condition):
     @property
     @override
     def identifier(self) -> str:
-        base_id = _condition_identifier(self._model)
-        return f"{base_id}#{self._instance_number}"
+        return (
+            f"hubitat({self._model.device_id}-{self._model.attribute} "
+            f"{self._model.operator} {self._model.value})#{self._instance_number}"
+        )
 
     @property
     @override
@@ -179,8 +161,8 @@ class BooleanStateCondition(Condition):
     @property
     @override
     def identifier(self) -> str:
-        base_id = _condition_identifier(self._model)
-        return f"{base_id}#{self._instance_number}"
+        inner = f' {self._model.operator} '.join(self._subconditions.keys())
+        return f"({inner})#{self._instance_number}"
 
     @property
     @override
@@ -204,6 +186,11 @@ class BooleanStateCondition(Condition):
         for (condition_id, state) in conditions.items():
             self._subconditions[condition_id] = (self._subconditions[condition_id][0], state)
         return self.evaluate()
+    
+    @override
+    def on_condition_event(self, condition: Condition, triggered: bool):
+        if condition.identifier in self._subconditions:
+            self._subconditions[condition.identifier] = (self._subconditions[condition.identifier][0], triggered)
 
     @override
     def evaluate(self) -> bool:
@@ -232,15 +219,18 @@ class TimeOfDayStateCondition(Condition):
         self._check_times = [time(hour=model.hour, minute=model.minute)]
         # For the 'is' operator, we re-trigger a minute later also so the condition can become false again
         if model.operator == 'is':
-            self._check_times.append(time(hour=model.hour, minute=model.minute) + timedelta(minutes=1))
+            if model.minute == 59:
+                next_check = time(hour=(model.hour + 1) % 24, minute=0)
+            else:
+                next_check = time(hour=model.hour, minute=model.minute + 1)
+            self._check_times.append(next_check)
         self._instance_number = TimeOfDayStateCondition._instance_counter
         TimeOfDayStateCondition._instance_counter += 1
 
     @property
     @override
     def identifier(self) -> str:
-        base_id = _condition_identifier(self._model)
-        return f"{base_id}#{self._instance_number}"
+        return f"time_of_day({self._model.operator} {self._model.hour:02d}:{self._model.minute:02d})#{self._instance_number}"
     
     @property
     @override
@@ -260,3 +250,32 @@ class TimeOfDayStateCondition(Condition):
                 return now >= model_time
             case _:
                 raise ValueError(f"Unknown operator: {self._model.operator}")
+
+
+class TrueCondition(Condition):
+    """Condition that is always true."""
+
+    _instance_counter = 0
+
+    def __init__(self, timeout: Optional[timedelta] = None):
+        self._timeout = timeout
+        self._instance_number = TrueCondition._instance_counter
+        TrueCondition._instance_counter += 1
+
+    @property
+    @override
+    def identifier(self) -> str:
+        return f"true()#{self._instance_number}"
+    
+    @property
+    @override
+    def duration(self) -> Optional[int]:
+        return self._timeout.total_seconds() if self._timeout is not None else None
+    
+    @override
+    def initialize(self, attrs: dict[int, DeviceState], conditions: dict[str, bool]) -> bool:
+        return True
+    
+    @override
+    def evaluate(self) -> bool:
+        return True

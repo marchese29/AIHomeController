@@ -16,6 +16,7 @@ from hubitat.rules.condition import (
     condition_for_model,
     DeviceStateCondition,
     TimeOfDayStateCondition,
+    TrueCondition,
 )
 from hubitat.rules.model import (
     BooleanCondition,
@@ -228,7 +229,10 @@ class RuleManager:
             if action.timeout is not None 
             else None
         )
-        condition = condition_for_model(action.condition, timeout)
+        if action.condition is None:
+            condition = TrueCondition(timeout)
+        else:
+            condition = condition_for_model(action.condition, timeout)
         condition.action = self._on_condition_triggered(
             condition, remaining_actions, rule_trigger
         )
