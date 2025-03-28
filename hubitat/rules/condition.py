@@ -29,8 +29,6 @@ def condition_for_model(condition: StateCondition, timeout: Optional[timedelta] 
             return BooleanStateCondition(bool_condition, timeout)
         case TimeOfDayCondition() as time_condition:
             return TimeOfDayStateCondition(time_condition)
-        case TrueCondition() as true_condition:
-            return TrueCondition(timeout)
         case _:
             raise ValueError(f"Unknown condition type: {type(condition)}")
 
@@ -41,9 +39,9 @@ class DeviceStateCondition(Condition):
     This condition monitors a specific device attribute and evaluates to true
     when the attribute matches the specified operator and value.
     """
-    
+
     _instance_counter = 0
-    
+
     def __init__(self, model: DeviceCondition, timeout: Optional[timedelta] = None):
         self._model = model
         self._previous_value = None
