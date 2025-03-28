@@ -44,7 +44,7 @@ class DeviceCommand(BaseModel):
 
 
 allowed_capabilities: List[str] = [
-    'Switch', 'SwitchLevel', 'MotionSensor', 'ContactSensor',
+    'Switch', 'SwitchLevel', 'MotionSensor', 'ContactSensor', 'PresenceSensor',
     'TemperatureMeasurement', 'RelativeHumidityMeasurement', 'GarageDoorControl'
 ]
 
@@ -77,6 +77,13 @@ capability_attributes: Dict[str, List[DeviceAttribute]] = {
             name='contact',
             value_type='string',
             restrictions={'enum': ['closed', 'open']}
+        )
+    ],
+    'PresenceSensor': [
+        DeviceAttribute(
+            name='presence',
+            value_type='string',
+            restrictions={'enum': ['present', 'not present']}
         )
     ],
     'TemperatureMeasurement': [
@@ -117,6 +124,7 @@ capability_commands: Dict[str, List[DeviceCommand]] = {
     ],
     'MotionSensor': [],
     'ContactSensor': [],
+    'PresenceSensor': [],
     'TemperatureMeasurement': [],
     'RelativeHumidityMeasurement': [],
     'GarageDoorControl': [DeviceCommand(name=c) for c in ['open', 'close']]
