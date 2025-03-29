@@ -32,14 +32,17 @@ he_client.load_devices()
 rule_manager = RuleManager(he_client)
 RULE_PROCESS_LOCK: Optional[aio.Lock] = None
 
-assistant = PromptAssistant(AsyncOpenAI(api_key=env_var('OPENAI_KEY')),
-                            generate_prompt(he_client.devices),
-                            tools=[
-                                DeviceCommandFunction(he_client),
-                                DeviceQueryFunction(he_client),
-                                LayoutFunction(he_client.devices),
-                                CurrentTimeFunction()
-                            ])
+prompt = generate_prompt(he_client.devices)
+print(prompt)
+assistant = PromptAssistant(
+    AsyncOpenAI(api_key=env_var('OPENAI_KEY')),
+    prompt,
+    tools=[
+        DeviceCommandFunction(he_client),
+        DeviceQueryFunction(he_client),
+        LayoutFunction(he_client.devices),
+        CurrentTimeFunction()
+    ])
 
 
 @app.post('/message')
@@ -71,7 +74,7 @@ async def install_rule():
 @app.before_serving
 async def startup():
     """Initialize application state before serving requests.
-    
+
     This function is called by Quart before the application starts serving requests.
     It initializes the rule process lock to ensure thread-safe rule processing.
     """
