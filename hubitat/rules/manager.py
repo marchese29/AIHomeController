@@ -9,7 +9,7 @@ in the Hubitat ecosystem. It handles:
 """
 
 from datetime import timedelta
-
+from typing import Optional
 from hubitat.client import HubitatClient
 from hubitat.rules.condition import (
     BooleanStateCondition,
@@ -37,9 +37,9 @@ from hubitat.rules.process import (
 )
 
 
+# pylint: disable=too-few-public-methods
 class _ExitAction:
     """Action that stops the execution of remaining actions."""
-    pass
 
 
 InternalAction = ModelAction | _ExitAction
@@ -47,21 +47,27 @@ InternalAction = ModelAction | _ExitAction
 
 class RuleManager:
     """Manages the installation and execution of automation rules.
-    
+
     This class handles the lifecycle of rules, from installation through execution,
     including condition monitoring and action sequencing.
     """
-    
+
     def __init__(self, he_client: HubitatClient):
         self._process = RuleProcessManager(he_client)
         self._he_client = he_client
+        # Track installed rules by name -> (rule, condition)
+        self._installed_rules: dict[str, tuple[Rule, Condition]] = {}
 
     async def install_rule(self, rule: Rule):
         """Install a rule into the process manager.
-        
+
         Args:
             rule: The rule to install
         """
+        if rule.name in self._installed_rules:
+            raise ValueError(
+                f"Rule with name '{rule.name}' is already installed")
+
         match rule.trigger:
             case DeviceCondition() as trigger:
                 condition = DeviceStateCondition(trigger)
@@ -71,7 +77,7 @@ class RuleManager:
             case BooleanCondition() as trigger:
                 condition = BooleanStateCondition(trigger)
                 on_trigger = self._on_rule_triggered(rule, condition)
-                condition.action = on_trigger                
+                condition.action = on_trigger
                 await self._process.add_condition(condition)
             case TimeOfDayCondition() as trigger:
                 condition = TimeOfDayStateCondition(trigger)
@@ -80,57 +86,56 @@ class RuleManager:
                 await self._process.add_condition(condition)
             case _:
                 raise ValueError(f"Unknown trigger type: {type(rule.trigger)}")
-    
-    def _on_rule_triggered(self, rule: Rule, trigger: Condition) -> Action:
-        async def action(cm: ConditionManager):
-            cm.remove_condition(trigger)
-            await self._invoke_actions(rule.actions + [_ExitAction()], trigger)
-        return action
-    
-    def _on_condition_triggered(
-        self,
-        condition: Condition,
-        remaining_actions: list[InternalAction],
-        rule_trigger: Condition
-    ) -> Action:
-        async def inner(cm: ConditionManager):
-            cm.remove_condition(condition)
-            await self._invoke_actions(remaining_actions, rule_trigger)
-        return inner
 
-    def _on_condition_timeout(
-        self,
-        condition: Condition,
-        remaining_actions: list[InternalAction],
-        rule_trigger: Condition,
-        exit_on_timeout: bool = False
-    ) -> Action:
-        async def inner(cm: ConditionManager):
-            cm.remove_condition(condition)
-            if not exit_on_timeout:
-                await self._invoke_actions(remaining_actions, rule_trigger)
-            else:
-                await self._invoke_actions([_ExitAction()], rule_trigger)
-        return inner
+        self._installed_rules[rule.name] = (rule, condition)
 
-    async def _invoke_actions(
-        self, 
-        actions: list[InternalAction], 
-        rule_trigger: Condition
+    def uninstall_rule(self, rule_name: str):
+        """Uninstall a rule by its name.
+
+        Args:
+            rule_name: The name of the rule to uninstall
+        """
+        if rule_name not in self._installed_rules:
+            return
+
+        _, condition = self._installed_rules[rule_name]
+        self._process.remove_condition(condition)
+        del self._installed_rules[rule_name]
+
+    def get_installed_rules(self) -> list[Rule]:
+        """Get all currently installed rules.
+
+        Returns:
+            A list of all currently installed rules
+        """
+        return [rule for rule, _ in self._installed_rules.values()]
+
+    def get_rule_by_name(self, rule_name: str) -> Rule | None:
+        """Get a rule by its name.
+
+        Args:
+            rule_name: The name of the rule to get
+        """
+        return self._installed_rules.get(rule_name)
+
+    async def invoke_actions(
+        self,
+        actions: list[InternalAction],
+        rule_trigger: Optional[Condition] = None
     ):
         """Execute a sequence of actions.
-        
+
         This method processes a list of actions sequentially. For each action, it 
         delegates to the appropriate handler method based on the action type. The 
         handler methods determine whether to continue executing remaining actions 
         immediately or wait for some condition.
-        
+
         Args:
             actions: The list of actions to execute
         """
         if not actions:
             return
-            
+
         action = actions[0]
         remaining_actions = actions[1:]
         match action:
@@ -151,16 +156,49 @@ class RuleManager:
                     wait_action, remaining_actions, rule_trigger
                 )
             case _ExitAction():
-                await self._process.add_condition(rule_trigger)
+                if rule_trigger is not None:
+                    await self._process.add_condition(rule_trigger)
             case _:
                 raise NotImplementedError(
                     f"Unsupported action type: {type(action)}"
                 )
 
+    def _on_rule_triggered(self, rule: Rule, trigger: Condition) -> Action:
+        async def action(cm: ConditionManager):
+            cm.remove_condition(trigger)
+            await self.invoke_actions(rule.actions + [_ExitAction()], trigger)
+        return action
+
+    def _on_condition_triggered(
+        self,
+        condition: Condition,
+        remaining_actions: list[InternalAction],
+        rule_trigger: Condition
+    ) -> Action:
+        async def inner(cm: ConditionManager):
+            cm.remove_condition(condition)
+            await self.invoke_actions(remaining_actions, rule_trigger)
+        return inner
+
+    def _on_condition_timeout(
+        self,
+        condition: Condition,
+        remaining_actions: list[InternalAction],
+        rule_trigger: Condition,
+        exit_on_timeout: bool = False
+    ) -> Action:
+        async def inner(cm: ConditionManager):
+            cm.remove_condition(condition)
+            if not exit_on_timeout:
+                await self.invoke_actions(remaining_actions, rule_trigger)
+            else:
+                await self.invoke_actions([_ExitAction()], rule_trigger)
+        return inner
+
     async def _handle_device_control(
-        self, 
-        action: DeviceControlAction, 
-        remaining_actions: list[InternalAction], 
+        self,
+        action: DeviceControlAction,
+        remaining_actions: list[InternalAction],
         rule_trigger: Condition
     ):
         """Handle a device control action."""
@@ -169,43 +207,43 @@ class RuleManager:
             action.command,
             action.arguments,
         )
-        await self._invoke_actions(remaining_actions, rule_trigger)
+        await self.invoke_actions(remaining_actions, rule_trigger)
 
     async def _handle_if_then_else(
-        self, 
-        action: IfThenElseAction, 
-        remaining_actions: list[InternalAction], 
+        self,
+        action: IfThenElseAction,
+        remaining_actions: list[InternalAction],
         rule_trigger: Condition
     ):
         """Handle an if-then-else action."""
         condition = condition_for_model(action.if_condition)
-        
+
         # Add the condition to the process manager, get state, then remove it
         await self._process.add_condition(condition)
         state = self._process.check_condition_state(condition)
         self._process.remove_condition(condition)
 
         if state:
-            await self._invoke_actions(
+            await self.invoke_actions(
                 action.then_actions + remaining_actions, rule_trigger
             )
         elif action.else_actions is not None:
-            await self._invoke_actions(
+            await self.invoke_actions(
                 action.else_actions + remaining_actions, rule_trigger
             )
         else:
-            await self._invoke_actions(remaining_actions, rule_trigger)
+            await self.invoke_actions(remaining_actions, rule_trigger)
 
     async def _handle_until(
-        self, 
-        action: UntilAction, 
-        remaining_actions: list[InternalAction], 
+        self,
+        action: UntilAction,
+        remaining_actions: list[InternalAction],
         rule_trigger: Condition
     ):
         """Handle an until action."""
         timeout = (
-            timedelta(seconds=action.timeout) 
-            if action.timeout is not None 
+            timedelta(seconds=action.timeout)
+            if action.timeout is not None
             else None
         )
         condition = condition_for_model(action.condition, timeout)
@@ -218,15 +256,15 @@ class RuleManager:
         await self._process.add_condition(condition)
 
     async def _handle_wait(
-        self, 
-        action: WaitAction, 
-        remaining_actions: list[InternalAction], 
+        self,
+        action: WaitAction,
+        remaining_actions: list[InternalAction],
         rule_trigger: Condition
     ):
         """Handle a wait action."""
         timeout = (
-            timedelta(seconds=action.timeout) 
-            if action.timeout is not None 
+            timedelta(seconds=action.timeout)
+            if action.timeout is not None
             else None
         )
         if action.condition is None:
