@@ -15,13 +15,13 @@ from gpt.assistant import AIHomeControlAssistant
 from gpt.prompt import generate_prompt
 from hubitat.rules.manager import RuleManager
 from hubitat.rules.model import Rule
+from hubitat.rules.tool import InstallRuleTool
 from hubitat.client import HubitatClient
 from hubitat.command import DeviceCommandFunction
 from hubitat.query import DeviceQueryFunction, LayoutFunction
 from util import env_var
 from utilities.time import CurrentTimeFunction
 
-print("Starting application...")  # Debug print statement
 load_dotenv()
 
 app = Quart(__name__)
@@ -41,7 +41,8 @@ assistant = AIHomeControlAssistant(
         DeviceCommandFunction(he_client),
         DeviceQueryFunction(he_client),
         LayoutFunction(he_client.devices),
-        CurrentTimeFunction()
+        CurrentTimeFunction(),
+        InstallRuleTool(rule_manager)
     ])
 
 

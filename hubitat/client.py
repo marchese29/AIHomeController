@@ -169,11 +169,13 @@ class HubitatClient:
         self._address = f"http://{env_var('HE_ADDRESS')}/apps/api/{env_var('HE_APP_ID')}"
         self._token = env_var('HE_ACCESS_TOKEN')
         self.devices: List[HubitatDevice] = []
-        self._subscriptions: Dict[int, Callable[[DeviceEvent], Awaitable[bool]]] = {}
+        self._subscriptions: Dict[int, Callable[[
+            DeviceEvent], Awaitable[bool]]] = {}
 
     def load_devices(self):
         """Load all currently-known devices from the Hubitat hub."""
-        resp = httpx.get(f"{self._address}/devices/all", params={'access_token': self._token})
+        resp = httpx.get(f"{self._address}/devices/all",
+                         params={'access_token': self._token})
 
         for dev in resp.json():
             caps = [
@@ -243,10 +245,20 @@ class HubitatClient:
         """
         url = f"{self._address}/devices/{device_id}"
 
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                url, params={'access_token': self._token}
-            )
+        with httpx.Client() as client:
+            try:
+                resp = client.get(
+                    url, params={'access_token': self._token}
+                )
+            except httpx.HTTPStatusError as error:
+                raise Exception(
+                    f"HE Client returned '{error.response.status_code}' "
+                    f"status: {error.response.text}"
+                ) from error
+            except Exception as error:
+                print(f"HE Client returned error: {error}")
+                raise
+
         if resp.status_code != 200:
             raise Exception(
                 f"HE Client returned '{resp.status_code}' status: {resp.text}"

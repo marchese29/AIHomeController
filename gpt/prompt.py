@@ -75,9 +75,16 @@ def generate_prompt(devices: list[HubitatDevice]) -> str:
 
     # Format the template with all variables
     template_path = os.path.join(
-        os.path.dirname(__file__), 'prompt_template.txt')
+        os.path.dirname(__file__), 'base_prompt.txt')
     with open(template_path, 'r', encoding='utf-8') as f:
         template = f.read()
+
+    # Load and append the rule prompt
+    rule_prompt_path = os.path.join(
+        os.path.dirname(__file__), 'rule_prompt.txt')
+    with open(rule_prompt_path, 'r', encoding='utf-8') as f:
+        rule_prompt = f.read()
+
     return template.format(
         home_location=env_var('HOME_LOCATION'),
         num_capabilities=len(allowed_capabilities),
@@ -90,4 +97,4 @@ def generate_prompt(devices: list[HubitatDevice]) -> str:
         example_device_capabilities='\n'.join(example_device_capabilities),
         example_attributes=', '.join(example_attributes),
         example_commands=', '.join(example_commands)
-    )
+    ) + "\n\n" + rule_prompt
