@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 from openai import AsyncOpenAI
 from quart import Quart, jsonify, request
 
-from gpt.assistant import PromptAssistant
+from gpt.assistant import AIHomeControlAssistant
 from gpt.prompt import generate_prompt
 from hubitat.rules.manager import RuleManager
 from hubitat.rules.model import Rule
@@ -34,7 +34,7 @@ RULE_PROCESS_LOCK: Optional[aio.Lock] = None
 
 prompt = generate_prompt(he_client.devices)
 print(prompt)
-assistant = PromptAssistant(
+assistant = AIHomeControlAssistant(
     AsyncOpenAI(api_key=env_var('OPENAI_KEY')),
     prompt,
     tools=[

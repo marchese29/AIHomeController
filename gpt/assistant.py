@@ -20,7 +20,7 @@ from gpt.functions import OpenAIFunction
 from util import env_var, JSONObject
 
 
-class PromptAssistant:
+class AIHomeControlAssistant:
     """The assistant for the main prompt of the home."""
 
     def __init__(

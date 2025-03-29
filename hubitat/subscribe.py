@@ -7,12 +7,15 @@ from gpt.functions import OpenAIFunction
 
 
 class AttributeSubscription(BaseModel):
-    device_id: int = Field(description='The ID of the device to be notified of events for')
-    attributes: List[str] = Field(description='The attributes to receive notifications for', min_length=1)
+    device_id: int = Field(
+        description='The ID of the device to be notified of events for')
+    attributes: List[str] = Field(
+        description='The attributes to receive notifications for', min_length=1)
 
 
 class SubscriptionList(BaseModel):
-    subscriptions: List[AttributeSubscription] = Field(description='The list of subscriptions', min_length=1)
+    subscriptions: List[AttributeSubscription] = Field(
+        description='The list of subscriptions', min_length=1)
 
 
 class SubscribeFunction(OpenAIFunction[SubscriptionList]):
@@ -38,7 +41,8 @@ class SubscribeFunction(OpenAIFunction[SubscriptionList]):
 
 
 class Unsubscription(BaseModel):
-    device_ids: List[int] = Field(description='The ID of the devices to unsubscribe from events for', min_length=1)
+    device_ids: List[int] = Field(
+        description='The ID of the devices to unsubscribe from events for', min_length=1)
 
 
 class UnsubscribeFunction(OpenAIFunction[Unsubscription]):
