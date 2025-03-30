@@ -44,10 +44,10 @@ class DescribeRuleTool(OpenAIFunction[StringValue]):
         self._rule_manager = rule_manager
 
     def get_name(self) -> str:
-        return 'describe_rule'
+        return "describe_rule"
 
     def get_description(self) -> str:
-        return 'Use this function to get a detailed description of a rule'
+        return "Use this function to get a detailed description of a rule"
 
     # pylint: disable=arguments-renamed
     @override
@@ -65,16 +65,16 @@ class ExecuteActionsTool(OpenAIFunction[ActionList]):
         self._rule_manager = rule_manager
 
     def get_name(self) -> str:
-        return 'execute_actions'
+        return "execute_actions"
 
     def get_description(self) -> str:
-        return 'Use this function to execute a list of actions'
+        return "Use this function to execute a list of actions"
 
     # pylint: disable=arguments-renamed
     @override
     async def execute(self, actions: ActionList) -> str:
         await self._rule_manager.invoke_actions(actions.actions)
-        return 'Actions executed successfully'
+        return "Actions executed successfully"
 
 
 class InstallRuleTool(OpenAIFunction[Rule]):
@@ -84,16 +84,16 @@ class InstallRuleTool(OpenAIFunction[Rule]):
         self._rule_manager = rule_manager
 
     def get_name(self) -> str:
-        return 'install_rule'
+        return "install_rule"
 
     def get_description(self) -> str:
-        return 'Use this function to install a rule'
+        return "Use this function to install a rule"
 
     # pylint: disable=arguments-renamed
     @override
     async def execute(self, rule: Rule) -> str:
         await self._rule_manager.install_rule(rule)
-        return 'Rule installed successfully'
+        return "Rule installed successfully"
 
 
 class ListAllRulesTool(OpenAIFunction[Empty]):
@@ -103,19 +103,24 @@ class ListAllRulesTool(OpenAIFunction[Empty]):
         self._rule_manager = rule_manager
 
     def get_name(self) -> str:
-        return 'list_all_rules'
+        return "list_all_rules"
 
     def get_description(self) -> str:
-        return 'Use this function to get a summary of all current rules'
+        return "Use this function to get a summary of all current rules"
 
     # pylint: disable=arguments-renamed
     @override
     async def execute(self, _: Empty) -> list[Rule]:
         rules = self._rule_manager.get_installed_rules()
-        return json.dumps([{
-            'name': rule.name,
-            'description': rule.description,
-        } for rule in rules])
+        return json.dumps(
+            [
+                {
+                    "name": rule.name,
+                    "description": rule.description,
+                }
+                for rule in rules
+            ]
+        )
 
 
 class UninstallRuleTool(OpenAIFunction[StringValue]):
@@ -125,13 +130,13 @@ class UninstallRuleTool(OpenAIFunction[StringValue]):
         self._rule_manager = rule_manager
 
     def get_name(self) -> str:
-        return 'uninstall_rule'
+        return "uninstall_rule"
 
     def get_description(self) -> str:
-        return 'Use this function to uninstall a rule'
+        return "Use this function to uninstall a rule"
 
     # pylint: disable=arguments-renamed
     @override
     async def execute(self, rule_name: StringValue) -> str:
-        self._rule_manager.uninstall_rule(rule_name.value)
-        return 'Rule uninstalled successfully'
+        await self._rule_manager.uninstall_rule(rule_name.value)
+        return "Rule uninstalled successfully"
