@@ -75,5 +75,11 @@ async def install_rule():
     return "Success"
 
 
+@app.before_serving
+async def startup():
+    """Initialize the application before serving requests"""
+    await rule_manager.install_saved_rules()
+
+
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=8080)

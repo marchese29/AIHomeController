@@ -164,3 +164,6 @@ devfile.yaml
 
 # VS Code
 .vscode/
+
+# Project-Specific Files
+rules.json

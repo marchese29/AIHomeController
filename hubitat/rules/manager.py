@@ -8,8 +8,12 @@ in the Hubitat ecosystem. It handles:
 - Device state monitoring and event handling
 """
 
+import json
+import os
 from datetime import timedelta
 from typing import Optional
+
+import aiofiles
 
 from hubitat.client import HubitatClient
 from hubitat.rules.condition import (
@@ -36,6 +40,7 @@ from hubitat.rules.process import (
     ConditionManager,
     RuleProcessManager,
 )
+from util import env_var
 
 
 # pylint: disable=too-few-public-methods
@@ -44,6 +49,27 @@ class _ExitAction:
 
 
 InternalAction = ModelAction | _ExitAction
+
+
+def _find_project_root(start_path: str) -> str:
+    """Find the project root by looking for app.py in parent directories.
+
+    Args:
+        start_path: The path to start searching from
+
+    Returns:
+        The path to the project root directory
+
+    Raises:
+        RuntimeError: If no project root is found
+    """
+    current = start_path
+    while current != os.path.dirname(current):  # Stop at root directory
+        if os.path.exists(os.path.join(current, "app.py")):
+            return current
+        current = os.path.dirname(current)
+    raise RuntimeError(
+        "Could not find project root (directory containing app.py)")
 
 
 class RuleManager:
@@ -58,6 +84,45 @@ class RuleManager:
         self._he_client = he_client
         # Track installed rules by name -> (rule, condition)
         self._installed_rules: dict[str, tuple[Rule, Condition]] = {}
+        rules_file = env_var("RULES_FILE", allow_null=True)
+        if rules_file is None:
+            project_root = _find_project_root(os.path.dirname(__file__))
+            rules_file = os.path.join(project_root, "rules.json")
+        self._rules_file = rules_file
+
+    async def _save_rules(self):
+        """Save all installed rules to the rules file."""
+        rules = [rule for rule, _ in self._installed_rules.values()]
+        try:
+            async with aiofiles.open(self._rules_file, "w", encoding="utf-8") as f:
+                await f.write(
+                    json.dumps([rule.model_dump() for rule in rules], indent=2)
+                )
+        except (IOError, OSError) as e:
+            raise RuntimeError(
+                f"Failed to save rules to {self._rules_file}: {e}"
+            ) from e
+
+    async def install_saved_rules(self):
+        """Load and install all rules from the rules file."""
+        if not os.path.exists(self._rules_file):
+            return
+
+        try:
+            print(f"Loading rules from {self._rules_file}")
+            async with aiofiles.open(self._rules_file, "r", encoding="utf-8") as f:
+                content = await f.read()
+                rules_data = json.loads(content)
+                for rule_data in rules_data:
+                    print(f"Installing saved rule: {rule_data['name']}")
+                    rule = Rule.model_validate(rule_data)
+                    await self.install_rule(rule)
+        except (IOError, OSError) as e:
+            print(f"Failed to read rules from {self._rules_file}: {e}")
+        except json.JSONDecodeError as e:
+            print(f"Invalid JSON in rules file {self._rules_file}: {e}")
+        except Exception as e:
+            print(f"Error loading rules from {self._rules_file}: {e}")
 
     async def install_rule(self, rule: Rule):
         """Install a rule into the process manager.
@@ -89,6 +154,7 @@ class RuleManager:
                 raise ValueError(f"Unknown trigger type: {type(rule.trigger)}")
 
         self._installed_rules[rule.name] = (rule, condition)
+        await self._save_rules()
 
     async def uninstall_rule(self, rule_name: str):
         """Uninstall a rule by its name.
@@ -102,6 +168,7 @@ class RuleManager:
         _, condition = self._installed_rules[rule_name]
         await self._process.remove_condition(condition)
         del self._installed_rules[rule_name]
+        await self._save_rules()
 
     def get_installed_rules(self) -> list[Rule]:
         """Get all currently installed rules.
@@ -117,7 +184,11 @@ class RuleManager:
         Args:
             rule_name: The name of the rule to get
         """
-        return self._installed_rules.get(rule_name)
+        return (
+            self._installed_rules.get(rule_name)[0]
+            if rule_name in self._installed_rules
+            else None
+        )
 
     async def invoke_actions(
         self, actions: list[InternalAction], rule_trigger: Optional[Condition] = None
