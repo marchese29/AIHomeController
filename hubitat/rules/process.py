@@ -1,10 +1,10 @@
 """Module for managing rule conditions and their evaluation in the Hubitat automation system."""
 
-from abc import ABC, abstractmethod
 import asyncio as aio
+from abc import ABC, abstractmethod
 from collections import deque
 from collections.abc import Awaitable, Callable
-from datetime import timedelta, time
+from datetime import time, timedelta
 from typing import Any, Optional
 
 from hubitat.client import DeviceEvent, HubitatClient
@@ -142,8 +142,7 @@ class RuleProcessManager:
 
         # Subscribe to any relevant device events
         for device_id, attrs in new_device_attrs.items():
-            self._he_client.subscribe(
-                device_id, list(attrs), self._on_device_event)
+            self._he_client.subscribe(device_id, list(attrs), self._on_device_event)
 
         # Start timeout timer if condition has a timeout
         if condition.timeout and condition.timeout_action:
@@ -204,11 +203,9 @@ class RuleProcessManager:
 
     def _remove_condition_locked(self, condition: Condition):
         # Cancel timeout timer if it exists
-        self._timer_service.cancel_timer(
-            f"condition_to({condition.identifier})")
+        self._timer_service.cancel_timer(f"condition_to({condition.identifier})")
         # Cancel duration timer if it exists
-        self._timer_service.cancel_timer(
-            f"condition_dur({condition.identifier})")
+        self._timer_service.cancel_timer(f"condition_dur({condition.identifier})")
         # Cancel any time-of-day clocks
         for check_time in condition.check_times:
             self._clock_service.cancel_clock(
@@ -219,28 +216,27 @@ class RuleProcessManager:
         if condition.identifier in self._conditions:
             del self._conditions[condition.identifier]
 
-        # Remove condition from device tracking
-        for device_id, attrs in condition.devices.items():
-            for attr in attrs:
-                self._tracked_devices[device_id][attr].discard(
-                    condition.identifier)
-                # If no more conditions care about this attribute
-                if len(self._tracked_devices[device_id][attr]) == 0:
-                    # Unsubscribe from this attribute
-                    self._he_client.unsubscribe(device_id)
-                    del self._tracked_devices[device_id][attr]
-                    del self._latest_attributes[device_id][attr]
-                    if len(self._tracked_devices[device_id]) == 0:
-                        del self._tracked_devices[device_id]
-                    if len(self._latest_attributes[device_id]) == 0:
-                        del self._latest_attributes[device_id]
+            # Remove condition from device tracking
+            for device_id, attrs in condition.devices.items():
+                for attr in attrs:
+                    self._tracked_devices[device_id][attr].discard(condition.identifier)
+                    # If no more conditions care about this attribute
+                    if len(self._tracked_devices[device_id][attr]) == 0:
+                        # Unsubscribe from this attribute
+                        self._he_client.unsubscribe(device_id)
+                        del self._tracked_devices[device_id][attr]
+                        del self._latest_attributes[device_id][attr]
+                        if len(self._tracked_devices[device_id]) == 0:
+                            del self._tracked_devices[device_id]
+                        if len(self._latest_attributes[device_id]) == 0:
+                            del self._latest_attributes[device_id]
 
-        # Recursively remove conditions from dependencies
-        if condition.identifier in self._condition_deps:
-            del self._condition_deps[condition.identifier]
-        for sub_condition in condition.conditions:
-            if sub_condition.identifier in self._conditions:
-                self._remove_condition_locked(sub_condition)
+            # Recursively remove conditions from dependencies
+            if condition.identifier in self._condition_deps:
+                del self._condition_deps[condition.identifier]
+            for sub_condition in condition.conditions:
+                if sub_condition.identifier in self._conditions:
+                    self._remove_condition_locked(sub_condition)
 
     def check_condition_state(self, condition: Condition) -> bool:
         """Checks if a condition is currently met"""
@@ -256,8 +252,7 @@ class RuleProcessManager:
                 if attr not in self._tracked_devices[device_id]:
                     self._tracked_devices[device_id][attr] = set()
                     new_device_attrs[device_id].add(attr)
-                self._tracked_devices[device_id][attr].add(
-                    condition.identifier)
+                self._tracked_devices[device_id][attr].add(condition.identifier)
         return new_device_attrs
 
     async def _fetch_new_attributes(self, new_device_attrs: dict[int, set[str]]):
@@ -275,8 +270,7 @@ class RuleProcessManager:
             if sub_condition.identifier not in self._conditions:
                 if sub_condition.identifier not in self._condition_deps:
                     self._condition_deps[sub_condition.identifier] = set()
-                self._condition_deps[sub_condition.identifier].add(
-                    condition.identifier)
+                self._condition_deps[sub_condition.identifier].add(condition.identifier)
                 await self._add_condition_locked(sub_condition)  # RECURSION
             init_cond_states[sub_condition.identifier] = self._conditions[
                 sub_condition.identifier

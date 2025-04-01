@@ -10,18 +10,24 @@ from quart import Quart, jsonify, request
 
 from gpt.assistant import AIHomeControlAssistant
 from gpt.prompt import generate_prompt
-from hubitat.rules.manager import RuleManager
-from hubitat.rules.model import Rule
-from hubitat.rules.tool import (
-    InstallRuleTool,
-    DescribeRuleTool,
-    ExecuteActionsTool,
-    ListAllRulesTool,
-    UninstallRuleTool,
-)
 from hubitat.client import HubitatClient
 from hubitat.command import DeviceCommandFunction
 from hubitat.query import DeviceQueryFunction, LayoutFunction
+from hubitat.rules.manager import RuleManager
+from hubitat.rules.model import Rule
+from hubitat.rules.tool import (
+    DescribeRuleTool,
+    ExecuteActionsTool,
+    InstallRuleTool,
+    ListAllRulesTool,
+    UninstallRuleTool,
+)
+from hubitat.scenes.manager import SceneManager
+from hubitat.scenes.tool import (
+    CreateSceneTool,
+    DeleteSceneTool,
+    ListAllScenesTool,
+)
 from util import env_var
 
 load_dotenv()
@@ -32,6 +38,7 @@ he_client = HubitatClient()
 he_client.load_devices()
 
 rule_manager = RuleManager(he_client)
+scene_manager = SceneManager(he_client, rule_manager)
 
 prompt = generate_prompt(he_client.devices)
 print(prompt)
@@ -47,6 +54,9 @@ assistant = AIHomeControlAssistant(
         ExecuteActionsTool(rule_manager),
         ListAllRulesTool(rule_manager),
         UninstallRuleTool(rule_manager),
+        CreateSceneTool(scene_manager),
+        DeleteSceneTool(scene_manager),
+        ListAllScenesTool(scene_manager),
     ],
 )
 
@@ -79,6 +89,7 @@ async def install_rule():
 async def startup():
     """Initialize the application before serving requests"""
     await rule_manager.install_saved_rules()
+    await scene_manager.install_saved_scenes()
 
 
 if __name__ == "__main__":

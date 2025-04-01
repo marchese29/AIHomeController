@@ -8,12 +8,9 @@ in the Hubitat ecosystem. It handles:
 - Device state monitoring and event handling
 """
 
-import json
 import os
 from datetime import timedelta
 from typing import Optional
-
-import aiofiles
 
 from hubitat.client import HubitatClient
 from hubitat.rules.condition import (
@@ -40,7 +37,7 @@ from hubitat.rules.process import (
     ConditionManager,
     RuleProcessManager,
 )
-from util import env_var
+from util import env_var, load_models_from_json, save_models_to_json
 
 
 # pylint: disable=too-few-public-methods
@@ -68,8 +65,7 @@ def _find_project_root(start_path: str) -> str:
         if os.path.exists(os.path.join(current, "app.py")):
             return current
         current = os.path.dirname(current)
-    raise RuntimeError(
-        "Could not find project root (directory containing app.py)")
+    raise RuntimeError("Could not find project root (directory containing app.py)")
 
 
 class RuleManager:
@@ -93,36 +89,16 @@ class RuleManager:
     async def _save_rules(self):
         """Save all installed rules to the rules file."""
         rules = [rule for rule, _ in self._installed_rules.values()]
-        try:
-            async with aiofiles.open(self._rules_file, "w", encoding="utf-8") as f:
-                await f.write(
-                    json.dumps([rule.model_dump() for rule in rules], indent=2)
-                )
-        except (IOError, OSError) as e:
-            raise RuntimeError(
-                f"Failed to save rules to {self._rules_file}: {e}"
-            ) from e
+        await save_models_to_json(rules, self._rules_file)
 
     async def install_saved_rules(self):
         """Load and install all rules from the rules file."""
-        if not os.path.exists(self._rules_file):
-            return
-
-        try:
-            print(f"Loading rules from {self._rules_file}")
-            async with aiofiles.open(self._rules_file, "r", encoding="utf-8") as f:
-                content = await f.read()
-                rules_data = json.loads(content)
-                for rule_data in rules_data:
-                    print(f"Installing saved rule: {rule_data['name']}")
-                    rule = Rule.model_validate(rule_data)
-                    await self.install_rule(rule)
-        except (IOError, OSError) as e:
-            print(f"Failed to read rules from {self._rules_file}: {e}")
-        except json.JSONDecodeError as e:
-            print(f"Invalid JSON in rules file {self._rules_file}: {e}")
-        except Exception as e:
-            print(f"Error loading rules from {self._rules_file}: {e}")
+        rules = await load_models_from_json(Rule, self._rules_file)
+        for rule in rules:
+            try:
+                await self.install_rule(rule)
+            except Exception as e:
+                print(f"Error installing rule '{rule.name}': {e}")
 
     async def install_rule(self, rule: Rule):
         """Install a rule into the process manager.
@@ -131,8 +107,7 @@ class RuleManager:
             rule: The rule to install
         """
         if rule.name in self._installed_rules:
-            raise ValueError(
-                f"Rule with name '{rule.name}' is already installed")
+            raise ValueError(f"Rule with name '{rule.name}' is already installed")
 
         match rule.trigger:
             case DeviceCondition() as trigger:
@@ -225,8 +200,7 @@ class RuleManager:
                 if rule_trigger is not None:
                     await self._process.add_condition(rule_trigger)
             case _:
-                raise NotImplementedError(
-                    f"Unsupported action type: {type(action)}")
+                raise NotImplementedError(f"Unsupported action type: {type(action)}")
 
     def _on_rule_triggered(self, rule: Rule, trigger: Condition) -> Action:
         async def action(cm: ConditionManager):
@@ -310,8 +284,7 @@ class RuleManager:
     ):
         """Handle an until action."""
         timeout = (
-            timedelta(
-                seconds=action.timeout) if action.timeout is not None else None
+            timedelta(seconds=action.timeout) if action.timeout is not None else None
         )
         condition = condition_for_model(action.condition, timeout)
         condition.action = self._on_condition_triggered(
@@ -330,8 +303,7 @@ class RuleManager:
     ):
         """Handle a wait action."""
         timeout = (
-            timedelta(
-                seconds=action.timeout) if action.timeout is not None else None
+            timedelta(seconds=action.timeout) if action.timeout is not None else None
         )
         if action.condition is None:
             condition = TrueCondition(timeout)
