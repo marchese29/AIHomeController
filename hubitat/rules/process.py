@@ -75,6 +75,12 @@ class Condition(ABC):
         states are updated.  If false, actions are only carried out when state switches to true."""
         return False
 
+    @trigger_always.setter
+    def trigger_always(self, value: bool):
+        """Set if actions should always be invoked whenever the condition remains true after its
+        states are updated.  If false, actions are only carried out when state switches to true."""
+        self._trigger_always = value
+
     def initialize(
         self, attrs: dict[int, DeviceState], conditions: dict[str, bool]
     ) -> bool:

@@ -3,14 +3,14 @@ This module handles loading and processing prompt templates, and formatting them
 device information, capabilities, and examples."""
 
 import json
-import random
 import os
+import random
 
 from hubitat.client import (
+    HubitatDevice,
     allowed_capabilities,
     capability_attributes,
     capability_commands,
-    HubitatDevice,
 )
 from util import env_var
 
@@ -53,13 +53,18 @@ def generate_prompt(devices: list[HubitatDevice]) -> str:
     rooms = list(set(d.room for d in devices))
     devices_list = "\n".join(
         f"- {device.label} (ID: {device.id}) ~ Capabilities: {', '.join(device.capabilities)}"
-        for device in devices)
-    capabilities_details = "\n".join(f"- {summarize_capability(capability)}"
-                                     for capability in allowed_capabilities)
+        for device in devices
+    )
+    capabilities_details = "\n".join(
+        f"- {summarize_capability(capability)}" for capability in allowed_capabilities
+    )
 
     # Get example device and its details
-    command_mapping = {cap: [com.model_dump(exclude_none=True) for com in capability_commands[cap]]
-                       for cap in allowed_capabilities if len(capability_commands[cap]) > 0}
+    command_mapping = {
+        cap: [com.model_dump(exclude_none=True) for com in capability_commands[cap]]
+        for cap in allowed_capabilities
+        if len(capability_commands[cap]) > 0
+    }
     cap_example = random.sample(list(command_mapping.keys()), 1)[0]
     example_device = [d for d in devices if cap_example in d.capabilities][0]
 
@@ -67,34 +72,41 @@ def generate_prompt(devices: list[HubitatDevice]) -> str:
     example_commands = []
     example_device_capabilities = []
     for capability in example_device.capabilities:
-        example_attributes.extend(
-            [a.name for a in capability_attributes[capability]])
-        example_commands.extend(
-            [c.name for c in capability_commands[capability]])
+        example_attributes.extend([a.name for a in capability_attributes[capability]])
+        example_commands.extend([c.name for c in capability_commands[capability]])
         example_device_capabilities.append(summarize_capability(capability))
 
     # Format the template with all variables
-    template_path = os.path.join(
-        os.path.dirname(__file__), 'base_prompt.txt')
-    with open(template_path, 'r', encoding='utf-8') as f:
+    template_path = os.path.join(os.path.dirname(__file__), "base_prompt.txt")
+    with open(template_path, "r", encoding="utf-8") as f:
         template = f.read()
 
     # Load and append the rule prompt
-    rule_prompt_path = os.path.join(
-        os.path.dirname(__file__), 'rule_prompt.txt')
-    with open(rule_prompt_path, 'r', encoding='utf-8') as f:
+    rule_prompt_path = os.path.join(os.path.dirname(__file__), "rule_prompt.txt")
+    with open(rule_prompt_path, "r", encoding="utf-8") as f:
         rule_prompt = f.read()
 
-    return template.format(
-        home_location=env_var('HOME_LOCATION'),
-        num_capabilities=len(allowed_capabilities),
-        capabilities_list=', '.join(allowed_capabilities),
-        devices_list=devices_list,
-        num_rooms=len(rooms),
-        rooms_list=', '.join(rooms),
-        capabilities_details=capabilities_details,
-        example_device=example_device,
-        example_device_capabilities='\n'.join(example_device_capabilities),
-        example_attributes=', '.join(example_attributes),
-        example_commands=', '.join(example_commands)
-    ) + "\n\n" + rule_prompt
+    # Load and append the scene prompt
+    scene_prompt_path = os.path.join(os.path.dirname(__file__), "scene_prompt.txt")
+    with open(scene_prompt_path, "r", encoding="utf-8") as f:
+        scene_prompt = f.read()
+
+    return (
+        template.format(
+            home_location=env_var("HOME_LOCATION"),
+            num_capabilities=len(allowed_capabilities),
+            capabilities_list=", ".join(allowed_capabilities),
+            devices_list=devices_list,
+            num_rooms=len(rooms),
+            rooms_list=", ".join(rooms),
+            capabilities_details=capabilities_details,
+            example_device=example_device,
+            example_device_capabilities="\n".join(example_device_capabilities),
+            example_attributes=", ".join(example_attributes),
+            example_commands=", ".join(example_commands),
+        )
+        + "\n\n"
+        + rule_prompt
+        + "\n\n"
+        + scene_prompt
+    )

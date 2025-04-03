@@ -17,14 +17,15 @@ class _Scene:
     def __init__(self, model: Scene):
         self._model = model
 
-        setting_conditions: list[BooleanCondition | DeviceCondition] = []
+        setting_conditions: list[DeviceCondition] = []
         for setting in model.settings:
             setting_conditions.append(setting.check)
-        self._set_trigger = condition_for_model(
-            BooleanCondition(operator="and", conditions=setting_conditions)
+        trigger_condition = BooleanCondition(
+            operator="and", conditions=setting_conditions
         )
+        self._set_trigger = condition_for_model(trigger_condition)
         self._unset_trigger = condition_for_model(
-            BooleanCondition(operator="not", conditions=[self._set_trigger])
+            BooleanCondition(operator="not", conditions=[trigger_condition])
         )
 
     @property
@@ -142,9 +143,9 @@ class SceneManager:
         """Get a scene"""
         return self._scenes.get(scene_name)
 
-    def get_all_scenes(self) -> list[tuple[Scene, bool]]:
+    def get_all_scenes(self) -> list[Scene]:
         """Get all scenes"""
-        return [(scene.model, scene.is_set) for scene in self._scenes.values()]
+        return [scene for scene in self._scenes.values()]
 
     async def set_scene(self, scene_name: str):
         """Sets a scene by sending all the appropriate commands.
@@ -152,7 +153,7 @@ class SceneManager:
         Note: this doesn't actually invoke the _on_scene_is_set methods, they will trigger
         automatically from device events in the rule process."""
         scene = self._scenes[scene_name]
-        for setting in scene.settings:
+        for setting in scene.model.settings:
             await self._he_client.send_command(
                 setting.device_id, setting.command, setting.arguments
             )

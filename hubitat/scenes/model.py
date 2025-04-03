@@ -2,7 +2,7 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
-from hubitat.rules.model import BooleanCondition, DeviceCondition
+from hubitat.rules.model import DeviceCondition
 
 
 class SceneSetting(BaseModel):
@@ -14,7 +14,7 @@ class SceneSetting(BaseModel):
         default=None, description="The arguments to send to the device"
     )
 
-    check: BooleanCondition | DeviceCondition = Field(
+    check: DeviceCondition = Field(
         description="Condition which, if true, indicates the setting is active"
     )
 

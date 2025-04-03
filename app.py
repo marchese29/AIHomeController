@@ -13,7 +13,7 @@ from gpt.prompt import generate_prompt
 from hubitat.client import HubitatClient
 from hubitat.command import DeviceCommandFunction
 from hubitat.query import DeviceQueryFunction, LayoutFunction
-from hubitat.rules.manager import RuleManager
+from hubitat.rules.manager import RuleManager, RuleProcessManager
 from hubitat.rules.model import Rule
 from hubitat.rules.tool import (
     DescribeRuleTool,
@@ -37,8 +37,9 @@ app = Quart(__name__)
 he_client = HubitatClient()
 he_client.load_devices()
 
-rule_manager = RuleManager(he_client)
-scene_manager = SceneManager(he_client, rule_manager)
+rule_process = RuleProcessManager(he_client)
+scene_manager = SceneManager(he_client, rule_process)
+rule_manager = RuleManager(he_client, rule_process, scene_manager)
 
 prompt = generate_prompt(he_client.devices)
 print(prompt)

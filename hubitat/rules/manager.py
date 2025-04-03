@@ -27,6 +27,7 @@ from hubitat.rules.model import (
     IfThenElseAction,
     ModelAction,
     Rule,
+    SceneAction,
     TimeOfDayCondition,
     UntilAction,
     WaitAction,
@@ -37,6 +38,7 @@ from hubitat.rules.process import (
     ConditionManager,
     RuleProcessManager,
 )
+from hubitat.scenes.manager import SceneManager
 from util import env_var, load_models_from_json, save_models_to_json
 
 
@@ -75,9 +77,15 @@ class RuleManager:
     including condition monitoring and action sequencing.
     """
 
-    def __init__(self, he_client: HubitatClient):
-        self._process = RuleProcessManager(he_client)
+    def __init__(
+        self,
+        he_client: HubitatClient,
+        rpm: RuleProcessManager,
+        scene_manager: SceneManager,
+    ):
+        self._process = rpm
         self._he_client = he_client
+        self._scene_manager = scene_manager
         # Track installed rules by name -> (rule, condition)
         self._installed_rules: dict[str, tuple[Rule, Condition]] = {}
         rules_file = env_var("RULES_FILE", allow_null=True)
@@ -192,6 +200,8 @@ class RuleManager:
                 await self._handle_if_then_else(
                     if_else_action, remaining_actions, rule_trigger
                 )
+            case SceneAction() as scene_action:
+                await self._handle_scene(scene_action, remaining_actions, rule_trigger)
             case UntilAction() as until_action:
                 await self._handle_until(until_action, remaining_actions, rule_trigger)
             case WaitAction() as wait_action:
@@ -275,6 +285,16 @@ class RuleManager:
             )
         else:
             await self.invoke_actions(remaining_actions, rule_trigger)
+
+    async def _handle_scene(
+        self,
+        action: SceneAction,
+        remaining_actions: list[InternalAction],
+        rule_trigger: Condition,
+    ):
+        """Handle a scene action."""
+        await self._scene_manager.set_scene(action.scene_name)
+        await self.invoke_actions(remaining_actions, rule_trigger)
 
     async def _handle_until(
         self,
