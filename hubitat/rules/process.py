@@ -8,8 +8,8 @@ from datetime import time, timedelta
 from typing import Any, Optional
 
 from hubitat.client import DeviceEvent, HubitatClient
-from hubitat.rules.clock import ClockService
-from hubitat.rules.timers import TimerService
+from utilities.clock import ClockService
+from utilities.timers import TimerService
 
 DeviceState = dict[str, Any]
 Action = Callable[["ConditionManager"], Awaitable[None]]
