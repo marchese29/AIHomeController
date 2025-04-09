@@ -46,8 +46,19 @@ def summarize_capability(capability: str) -> str:
     return result
 
 
-def generate_prompt(devices: list[HubitatDevice]) -> str:
-    """Generate the prompt by loading and processing the template file"""
+def generate_prompt(
+    devices: list[HubitatDevice],
+    assistant_type: str,
+) -> str:
+    """Generate the prompt by loading and processing the template file
+
+    Args:
+        devices: List of Hubitat devices
+        assistant_type: Type of assistant to generate prompt for
+
+    Returns:
+        Formatted prompt string for the specified assistant type
+    """
 
     # Prepare all the variables for template substitution
     rooms = list(set(d.room for d in devices))
@@ -76,37 +87,47 @@ def generate_prompt(devices: list[HubitatDevice]) -> str:
         example_commands.extend([c.name for c in capability_commands[capability]])
         example_device_capabilities.append(summarize_capability(capability))
 
-    # Format the template with all variables
+    # Get the specialist prompt based on assistant type
+    specialist_prompt = ""
+    if assistant_type == "main" or getattr(assistant_type, "value", [""])[0] == "main":
+        main_prompt_path = os.path.join(os.path.dirname(__file__), "main_prompt.txt")
+        with open(main_prompt_path, "r", encoding="utf-8") as f:
+            specialist_prompt = f.read()
+    elif (
+        assistant_type == "rules"
+        or getattr(assistant_type, "value", [""])[0] == "rules"
+    ):
+        rule_prompt_path = os.path.join(os.path.dirname(__file__), "rule_prompt.txt")
+        with open(rule_prompt_path, "r", encoding="utf-8") as f:
+            specialist_prompt = f.read()
+    elif (
+        assistant_type == "scenes"
+        or getattr(assistant_type, "value", [""])[0] == "scenes"
+    ):
+        scene_prompt_path = os.path.join(os.path.dirname(__file__), "scene_prompt.txt")
+        with open(scene_prompt_path, "r", encoding="utf-8") as f:
+            specialist_prompt = f.read()
+    else:
+        raise ValueError(f"Unknown assistant type: {assistant_type}")
+
+    # Format the base template with all variables including the specialist prompt
     template_path = os.path.join(os.path.dirname(__file__), "base_prompt.txt")
     with open(template_path, "r", encoding="utf-8") as f:
-        template = f.read()
+        base_template = f.read()
 
-    # Load and append the rule prompt
-    rule_prompt_path = os.path.join(os.path.dirname(__file__), "rule_prompt.txt")
-    with open(rule_prompt_path, "r", encoding="utf-8") as f:
-        rule_prompt = f.read()
-
-    # Load and append the scene prompt
-    scene_prompt_path = os.path.join(os.path.dirname(__file__), "scene_prompt.txt")
-    with open(scene_prompt_path, "r", encoding="utf-8") as f:
-        scene_prompt = f.read()
-
-    return (
-        template.format(
-            home_location=env_var("HOME_LOCATION"),
-            num_capabilities=len(allowed_capabilities),
-            capabilities_list=", ".join(allowed_capabilities),
-            devices_list=devices_list,
-            num_rooms=len(rooms),
-            rooms_list=", ".join(rooms),
-            capabilities_details=capabilities_details,
-            example_device=example_device,
-            example_device_capabilities="\n".join(example_device_capabilities),
-            example_attributes=", ".join(example_attributes),
-            example_commands=", ".join(example_commands),
-        )
-        + "\n\n"
-        + rule_prompt
-        + "\n\n"
-        + scene_prompt
+    complete_prompt = base_template.format(
+        home_location=env_var("HOME_LOCATION"),
+        num_capabilities=len(allowed_capabilities),
+        capabilities_list=", ".join(allowed_capabilities),
+        devices_list=devices_list,
+        num_rooms=len(rooms),
+        rooms_list=", ".join(rooms),
+        capabilities_details=capabilities_details,
+        example_device=example_device,
+        example_device_capabilities="\n".join(example_device_capabilities),
+        example_attributes=", ".join(example_attributes),
+        example_commands=", ".join(example_commands),
+        specialist_prompt=specialist_prompt,
     )
+
+    return complete_prompt

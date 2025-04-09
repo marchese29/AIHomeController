@@ -8,8 +8,7 @@ from dotenv import load_dotenv
 from openai import AsyncOpenAI
 from quart import Quart, jsonify, request
 
-from gpt.assistant import AIHomeControlAssistant
-from gpt.prompt import generate_prompt
+from gpt.controller import AIHomeController
 from hubitat.client import HubitatClient
 from hubitat.command import DeviceCommandFunction
 from hubitat.query import DeviceQueryFunction, LayoutFunction
@@ -34,31 +33,53 @@ load_dotenv()
 
 app = Quart(__name__)
 
+# Initialize Hubitat client
 he_client = HubitatClient()
 he_client.load_devices()
 
+# Initialize managers
 rule_process = RuleProcessManager(he_client)
 scene_manager = SceneManager(he_client, rule_process)
 rule_manager = RuleManager(he_client, rule_process, scene_manager)
 
-prompt = generate_prompt(he_client.devices)
-print(prompt)
-assistant = AIHomeControlAssistant(
-    AsyncOpenAI(api_key=env_var("OPENAI_KEY")),
-    prompt,
-    tools=[
-        DeviceCommandFunction(he_client),
-        DeviceQueryFunction(he_client),
-        LayoutFunction(he_client.devices),
-        InstallRuleTool(rule_manager),
-        DescribeRuleTool(rule_manager),
-        ExecuteActionsTool(rule_manager),
-        ListAllRulesTool(rule_manager),
-        UninstallRuleTool(rule_manager),
-        CreateSceneTool(scene_manager),
-        DeleteSceneTool(scene_manager),
-        ListAllScenesTool(scene_manager),
-    ],
+# Initialize OpenAI client
+ai_client = AsyncOpenAI(api_key=env_var("OPENAI_KEY"))
+
+# Define common tools needed by all assistants
+common_tools = [
+    DeviceCommandFunction(he_client),
+    DeviceQueryFunction(he_client),
+    LayoutFunction(he_client.devices),
+    ListAllRulesTool(rule_manager),
+    ListAllScenesTool(scene_manager),
+]
+
+# Tools specific to the main assistant
+main_tools = [*common_tools]
+
+# Tools specific to the rules assistant
+rules_tools = [
+    *common_tools,
+    InstallRuleTool(rule_manager),
+    UninstallRuleTool(rule_manager),
+    DescribeRuleTool(rule_manager),
+    ExecuteActionsTool(rule_manager),
+]
+
+# Tools specific to the scenes assistant
+scenes_tools = [
+    *common_tools,
+    CreateSceneTool(scene_manager),
+    DeleteSceneTool(scene_manager),
+]
+
+# Initialize the controller with all assistant types
+controller = AIHomeController(
+    ai_client,
+    he_client,
+    main_tools,
+    rules_tools,
+    scenes_tools,
 )
 
 
@@ -67,7 +88,7 @@ async def user_prompt():
     """Handles a user prompt and returns a response from the assistant"""
     message = (await request.form)["message"]
     print(f'Message from the User: "{message}"')
-    response = await assistant.handle_user_message(message)
+    response = await controller.handle_user_message(message)
     return jsonify(response)
 
 
