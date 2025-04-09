@@ -200,6 +200,7 @@ class AIHomeController:
     ):
         self._client = ai_client
         self._current_mode = AssistantType.MAIN
+        self._he_client = he_client
 
         # Create tool maps for each assistant type
         self._tool_maps = {
@@ -208,47 +209,53 @@ class AIHomeController:
             AssistantType.SCENES: {f.get_name(): f for f in scenes_tools},
         }
 
+        # Initialize these as None, will be set in initialize()
+        self._assistants = {}
+        self._threads = {}
+
+    async def initialize(self) -> None:
+        """Initialize the controller asynchronously.
+
+        This method should be called after construction to complete the async setup.
+        """
+        # Initialize assistants
         self._assistants = {
-            AssistantType.MAIN: aio.run(
-                _get_or_create_assistant(
-                    self._client,
-                    generate_prompt(
-                        he_client.devices, AssistantType.MAIN.assistant_type
-                    ),
-                    main_tools,
-                    AssistantType.MAIN,
-                )
+            AssistantType.MAIN: await _get_or_create_assistant(
+                self._client,
+                generate_prompt(
+                    self._he_client.devices, AssistantType.MAIN.assistant_type
+                ),
+                list(self._tool_maps[AssistantType.MAIN].values()),
+                AssistantType.MAIN,
             ),
-            AssistantType.RULES: aio.run(
-                _get_or_create_assistant(
-                    self._client,
-                    generate_prompt(
-                        he_client.devices, AssistantType.RULES.assistant_type
-                    ),
-                    rules_tools,
-                    AssistantType.RULES,
-                )
+            AssistantType.RULES: await _get_or_create_assistant(
+                self._client,
+                generate_prompt(
+                    self._he_client.devices, AssistantType.RULES.assistant_type
+                ),
+                list(self._tool_maps[AssistantType.RULES].values()),
+                AssistantType.RULES,
             ),
-            AssistantType.SCENES: aio.run(
-                _get_or_create_assistant(
-                    self._client,
-                    generate_prompt(
-                        he_client.devices, AssistantType.SCENES.assistant_type
-                    ),
-                    scenes_tools,
-                    AssistantType.SCENES,
-                )
+            AssistantType.SCENES: await _get_or_create_assistant(
+                self._client,
+                generate_prompt(
+                    self._he_client.devices, AssistantType.SCENES.assistant_type
+                ),
+                list(self._tool_maps[AssistantType.SCENES].values()),
+                AssistantType.SCENES,
             ),
         }
+
+        # Initialize threads
         self._threads = {
-            AssistantType.MAIN: aio.run(
-                _get_or_create_thread(self._client, AssistantType.MAIN)
+            AssistantType.MAIN: await _get_or_create_thread(
+                self._client, AssistantType.MAIN
             ),
-            AssistantType.RULES: aio.run(
-                _get_or_create_thread(self._client, AssistantType.RULES)
+            AssistantType.RULES: await _get_or_create_thread(
+                self._client, AssistantType.RULES
             ),
-            AssistantType.SCENES: aio.run(
-                _get_or_create_thread(self._client, AssistantType.SCENES)
+            AssistantType.SCENES: await _get_or_create_thread(
+                self._client, AssistantType.SCENES
             ),
         }
 

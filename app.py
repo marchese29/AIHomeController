@@ -28,59 +28,12 @@ from hubitat.scenes.tool import (
     ListAllScenesTool,
 )
 from util import env_var
+from utilities.clock import ClockService
+from utilities.timers import TimerService
 
 load_dotenv()
 
 app = Quart(__name__)
-
-# Initialize Hubitat client
-he_client = HubitatClient()
-he_client.load_devices()
-
-# Initialize managers
-rule_process = RuleProcessManager(he_client)
-scene_manager = SceneManager(he_client, rule_process)
-rule_manager = RuleManager(he_client, rule_process, scene_manager)
-
-# Initialize OpenAI client
-ai_client = AsyncOpenAI(api_key=env_var("OPENAI_KEY"))
-
-# Define common tools needed by all assistants
-common_tools = [
-    DeviceCommandFunction(he_client),
-    DeviceQueryFunction(he_client),
-    LayoutFunction(he_client.devices),
-    ListAllRulesTool(rule_manager),
-    ListAllScenesTool(scene_manager),
-]
-
-# Tools specific to the main assistant
-main_tools = [*common_tools]
-
-# Tools specific to the rules assistant
-rules_tools = [
-    *common_tools,
-    InstallRuleTool(rule_manager),
-    UninstallRuleTool(rule_manager),
-    DescribeRuleTool(rule_manager),
-    ExecuteActionsTool(rule_manager),
-]
-
-# Tools specific to the scenes assistant
-scenes_tools = [
-    *common_tools,
-    CreateSceneTool(scene_manager),
-    DeleteSceneTool(scene_manager),
-]
-
-# Initialize the controller with all assistant types
-controller = AIHomeController(
-    ai_client,
-    he_client,
-    main_tools,
-    rules_tools,
-    scenes_tools,
-)
 
 
 @app.post("/message")
@@ -88,14 +41,14 @@ async def user_prompt():
     """Handles a user prompt and returns a response from the assistant"""
     message = (await request.form)["message"]
     print(f'Message from the User: "{message}"')
-    response = await controller.handle_user_message(message)
+    response = await app.controller.handle_user_message(message)
     return jsonify(response)
 
 
 @app.post("/he_event")
 async def hubitat_device_event():
     """Endpoint that hubitat invokes when a device event occurs"""
-    await he_client.handle_device_event((await request.json)["content"])
+    await app.he_client.handle_device_event((await request.json)["content"])
     return "Success"
 
 
@@ -103,15 +56,81 @@ async def hubitat_device_event():
 async def install_rule():
     """Endpoint for manually installing a rule without the assistant"""
     rule = await request.json
-    await rule_manager.install_rule(Rule.model_validate(rule))
+    await app.rule_manager.install_rule(Rule.model_validate(rule))
     return "Success"
 
 
 @app.before_serving
 async def startup():
     """Initialize the application before serving requests"""
-    await rule_manager.install_saved_rules()
-    await scene_manager.install_saved_scenes()
+
+    # Initialize the Hubitat client
+    app.he_client = HubitatClient()
+    app.he_client.load_devices()
+
+    # Initialize services
+    app.timer_service = TimerService()
+    app.timer_service.start()
+    app.clock_service = ClockService()
+    app.clock_service.start()
+    app.rule_process = RuleProcessManager(
+        app.he_client, app.timer_service, app.clock_service
+    )
+
+    # Initialize managers
+    app.scene_manager = SceneManager(app.he_client, app.rule_process)
+    app.rule_manager = RuleManager(app.he_client, app.rule_process, app.scene_manager)
+
+    await app.rule_manager.install_saved_rules()
+    await app.scene_manager.install_saved_scenes()
+
+    # Initialize OpenAI client
+    ai_client = AsyncOpenAI(api_key=env_var("OPENAI_KEY"))
+
+    # Define common tools needed by all assistants
+    common_tools = [
+        DeviceCommandFunction(app.he_client),
+        DeviceQueryFunction(app.he_client),
+        LayoutFunction(app.he_client.devices),
+        ListAllRulesTool(app.rule_manager),
+        ListAllScenesTool(app.scene_manager),
+    ]
+
+    # Tools specific to the main assistant
+    main_tools = [*common_tools]
+
+    # Tools specific to the rules assistant
+    rules_tools = [
+        *common_tools,
+        InstallRuleTool(app.rule_manager),
+        UninstallRuleTool(app.rule_manager),
+        DescribeRuleTool(app.rule_manager),
+        ExecuteActionsTool(app.rule_manager),
+    ]
+
+    # Tools specific to the scenes assistant
+    scenes_tools = [
+        *common_tools,
+        CreateSceneTool(app.scene_manager),
+        DeleteSceneTool(app.scene_manager),
+    ]
+
+    # Initialize the controller with all assistant types
+    app.controller = AIHomeController(
+        ai_client,
+        app.he_client,
+        main_tools,
+        rules_tools,
+        scenes_tools,
+    )
+    await app.controller.initialize()
+
+
+@app.after_serving
+async def shutdown():
+    """Shutdown the application"""
+    await app.timer_service.stop()
+    await app.clock_service.stop()
 
 
 if __name__ == "__main__":

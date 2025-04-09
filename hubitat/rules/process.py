@@ -116,10 +116,15 @@ class ConditionManager:
 class RuleProcessManager:
     """Manages the various processes waiting for conditions to be met."""
 
-    def __init__(self, he_client: HubitatClient):
+    def __init__(
+        self,
+        he_client: HubitatClient,
+        timer_service: TimerService,
+        clock_service: ClockService,
+    ):
         self._he_client = he_client
-        self._timer_service = TimerService()
-        self._clock_service = ClockService()
+        self._timer_service = timer_service
+        self._clock_service = clock_service
 
         # ConditionId -> Condition
         self._conditions: dict[str, tuple[Condition, bool]] = {}
