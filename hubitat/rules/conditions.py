@@ -1,0 +1,243 @@
+from datetime import datetime, time, timedelta
+from typing import Any, Optional, override
+
+from hubitat.client import DeviceEvent
+from hubitat.rules.engine import AttributeState, DeviceAttribute, EngineCondition
+
+
+class AbstractCondition(EngineCondition):
+    def __bool__(self) -> bool:
+        raise NotImplementedError("Use utils.check(<condition>) to evaluate conditions")
+
+    @property
+    @override
+    def timeout(self) -> Optional[timedelta]:
+        return getattr(self, "_timeout", None)
+
+    @timeout.setter
+    def timeout(self, value: timedelta):
+        setattr(self, "_timeout", value)
+
+    @property
+    @override
+    def duration(self) -> Optional[timedelta]:
+        return getattr(self, "_duration", None)
+
+    @duration.setter
+    def duration(self, value: timedelta):
+        setattr(self, "_duration", value)
+
+
+class AttributeChangeCondition(AbstractCondition):
+    def __init__(self, device_id: int, attr_name: str):
+        self._device_id = device_id
+        self._attr_name = attr_name
+        self._prev_value = None
+        self._curr_value = None
+
+    @property
+    @override
+    def identifier(self) -> str:
+        return f"attribute_change(he_dev({self._device_id}:{self._attr_name}))"
+
+    @property
+    @override
+    def device_attributes(self) -> list[DeviceAttribute]:
+        return [(self._device_id, self._attr_name)]
+
+    @override
+    def on_device_event(self, event: DeviceEvent):
+        self._prev_value = self._curr_value
+        self._curr_value = event.value
+
+    @override
+    def initialize(
+        self, attrs: dict[int, dict[str, Any]], _conditions: dict[str, bool]
+    ) -> bool:
+        self._prev_value = attrs[self._device_id][self._attr_name]
+        self._curr_value = self._prev_value
+        return False
+
+    @override
+    def evaluate(self) -> bool:
+        return self._prev_value != self._curr_value
+
+
+class BooleanCondition(AbstractCondition):
+    def __init__(self, *conditions: AbstractCondition, operator: str):
+        self._conditions: dict[str, tuple[AbstractCondition, bool]] = {}
+        for condition in conditions:
+            self._conditions[condition.identifier] = (condition, False)
+        if operator == "not" and len(self._conditions) != 1:
+            raise ValueError("Boolean operator 'not' requires exactly one subcondition")
+        self._operator = operator
+
+    @property
+    @override
+    def identifier(self) -> str:
+        inner = f" {self._operator} ".join(self._conditions.keys())
+        return f"({inner})"
+
+    @property
+    @override
+    def conditions(self) -> list[EngineCondition]:
+        return [c for (c, _) in self._conditions.values()]
+
+    @override
+    def initialize(
+        self, _attrs: list[AttributeState], conditions: dict[str, bool]
+    ) -> bool:
+        for condition_id, state in conditions.items():
+            self._conditions[condition_id] = (
+                self._conditions[condition_id][0],
+                state,
+            )
+        return self.evaluate()
+
+    @override
+    def evaluate(self) -> bool:
+        match self._operator:
+            case "and":
+                return all([state for (_, state) in self._conditions.values()])
+            case "or":
+                return any([state for (_, state) in self._conditions.values()])
+            case "not":
+                return not [state for (_, state) in self._conditions.values()][0]
+            case _:
+                raise ValueError(f"Unknown operator: {self._operator}")
+
+
+class DynamicDeviceAttributeCondition(AbstractCondition):
+    def __init__(self, first: tuple[int, str], operator: str, second: tuple[int, str]):
+        self._left_device_id, self._left_attr_name = first
+        self._right_device_id, self._right_attr_name = second
+        self._operator = operator
+        self._left_value = None
+        self._right_value = None
+
+    @property
+    @override
+    def identifier(self) -> str:
+        return (
+            f"device_condition(he_dev({self._left_device_id}:{self._left_attr_name}) "
+            f"{self._operator} he_dev({self._right_device_id}:{self._right_attr_name}))"
+        )
+
+    @property
+    @override
+    def device_attributes(self) -> list[DeviceAttribute]:
+        return [
+            (self._left_device_id, self._left_attr_name),
+            (self._right_device_id, self._right_attr_name),
+        ]
+
+    @override
+    def initialize(
+        self, attrs: dict[int, dict[str, Any]], conditions: dict[str, bool]
+    ) -> bool:
+        self._left_value = self._cast_value(
+            attrs[self._left_device_id][self._left_attr_name]
+        )
+        self._right_value = self._cast_value(
+            attrs[self._right_device_id][self._right_attr_name]
+        )
+        return self.evaluate()
+
+    @override
+    def evaluate(self) -> bool:
+        match self._operator:
+            case "=":
+                return self._left_value == self._right_value
+            case "!=":
+                return self._left_value != self._right_value
+            case ">":
+                return self._left_value > self._right_value
+            case ">=":
+                return self._left_value >= self._right_value
+            case "<":
+                return self._left_value < self._right_value
+            case "<=":
+                return self._left_value <= self._right_value
+            case _:
+                raise ValueError(f"Unknown operator: {self._operator}")
+
+
+class StaticDeviceAttributeCondition(AbstractCondition):
+    def __init__(
+        self, device_id: int, attr_name: str, operator: str, val_to_check: Any
+    ):
+        self._device_id = device_id
+        self._attr_name = attr_name
+        self._device_value = None
+        self._value_type = type(val_to_check)
+        self._operator = operator
+        self._val_to_check = val_to_check
+
+    @property
+    @override
+    def identifier(self) -> str:
+        return (
+            f"device_condition(he_dev({self._device_id}:{self._attr_name}) "
+            f"{self._operator} {self._val_to_check})"
+        )
+
+    @property
+    @override
+    def device_attributes(self) -> list[DeviceAttribute]:
+        return [(self._device_id, self._attr_name)]
+
+    @override
+    def initialize(
+        self, attrs: dict[int, dict[str, Any]], conditions: dict[str, bool]
+    ) -> bool:
+        self._device_value = self._cast_value(attrs[self._device_id][self._attr_name])
+        return self.evaluate()
+
+    @override
+    def on_device_event(self, event: DeviceEvent):
+        self._device_value = self._cast_value(event.value)
+
+    @override
+    def evaluate(self) -> bool:
+        match self._operator:
+            case "=":
+                return self._device_value == self._val_to_check
+            case "!=":
+                return self._device_value != self._val_to_check
+            case ">":
+                return self._device_value > self._val_to_check
+            case ">=":
+                return self._device_value >= self._val_to_check
+            case "<":
+                return self._device_value < self._val_to_check
+            case "<=":
+                return self._device_value <= self._val_to_check
+            case _:
+                raise ValueError(f"Unknown operator: {self._operator}")
+
+    def _cast_value(self, value: any) -> any:
+        """Cast the incoming value to match the model value type.
+
+        Args:
+            value: The value to cast
+
+        Returns:
+            The value cast to the appropriate type
+        """
+        if value is None:
+            return None
+
+        try:
+            if isinstance(self._value_type, type(bool)):
+                if isinstance(value, str):
+                    return value.lower() in ("true", "1", "yes", "on", "active", "open")
+                return bool(value)
+            elif isinstance(self._value_type, type(int)):
+                return int(value)
+            elif isinstance(self._value_type, type(float)):
+                return float(value)
+            elif isinstance(self._value_type, type(str)):
+                return str(value)
+            return value
+        except (ValueError, TypeError):
+            return value
